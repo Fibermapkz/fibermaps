@@ -1,0 +1,2946 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FiberMap 2.0 — фото и управление ВОЛС</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --panel: #161b22;
+  --card: #1c2128;
+  --border: #30363d;
+  --text: #e6edf3;
+  --dim: #7d8590;
+  --blue: #388bfd;
+  --blue-light: #cae8ff;
+  --orange: #e09b3d;
+  --orange-light: #ffddb3;
+  --green: #3fb950;
+  --green-light: #aff5b4;
+  --pink: #db61a2;
+  --pink-light: #ffd6f0;
+  --red: #f85149;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Manrope', sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; overflow:hidden; font-family:var(--sans); background:var(--bg); color:var(--text); }
+
+/* LAYOUT */
+#app { display:flex; flex-direction:column; height:100vh; }
+#topbar {
+  height:52px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 12px; gap:10px; z-index:1000; flex-shrink:0;
+}
+.logo { font-family:var(--mono); font-size:14px; font-weight:700; color:var(--blue); letter-spacing:1px; white-space:nowrap; }
+.logo span { color:var(--dim); }
+
+.stats-bar { display:flex; gap:6px; flex:1; overflow-x:auto; scrollbar-width:none; }
+.stats-bar::-webkit-scrollbar { display:none; }
+/* STAT CHIPS — clickable */
+.stat-chip {
+  display:flex; align-items:center; gap:5px; padding:4px 10px;
+  border-radius:20px; border:1px solid var(--border);
+  font-family:var(--mono); font-size:11px; white-space:nowrap; flex-shrink:0;
+  background:var(--card); cursor:pointer; transition:all .15s;
+}
+.stat-chip:hover { border-color:var(--dim); }
+.stat-chip.active-chip { border-color:currentColor; }
+.stat-chip .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.stat-chip .val { font-weight:700; color:var(--text); }
+.stat-chip .lbl { color:var(--dim); }
+
+/* LIST PANEL */
+#list-panel {
+  position:absolute; bottom:0; left:0; right:0; z-index:700;
+  background:var(--panel); border-top:1px solid var(--border);
+  border-radius:16px 16px 0 0;
+  transform:translateY(100%);
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  max-height:48vh; display:flex; flex-direction:column;
+  will-change:transform;
+}
+#list-panel.open { transform:translateY(0) !important; }
+.lp-handle { width:36px; height:4px; background:var(--border); border-radius:2px; margin:10px auto 0; }
+.lp-head {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 16px 10px; border-bottom:1px solid var(--border);
+}
+.lp-title { font-size:15px; font-weight:700; flex:1; }
+.lp-count { font-family:var(--mono); font-size:12px; color:var(--dim); }
+.lp-close {
+  background:var(--card); border:1px solid var(--border); color:var(--dim);
+  border-radius:6px; padding:5px 10px; cursor:pointer; font-size:16px;
+}
+.lp-close:hover { color:var(--text); }
+.lp-body { overflow-y:auto; flex:1; }
+.lp-item {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.04);
+  cursor:pointer; transition:background .12s;
+}
+.lp-item:hover { background:rgba(255,255,255,.03); }
+.lp-item:last-child { border-bottom:none; }
+.lp-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+.lp-info { flex:1; min-width:0; }
+.lp-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lp-meta { font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:2px; }
+.lp-badge {
+  font-family:var(--mono); font-size:10px; font-weight:700;
+  padding:3px 8px; border-radius:4px; flex-shrink:0; white-space:nowrap;
+}
+.lp-empty { text-align:center; padding:40px 20px; color:var(--dim); font-size:14px; }
+
+.btn-add {
+  background:var(--blue); color:#fff; border:none; cursor:pointer;
+  padding:8px 14px; border-radius:8px; font-family:var(--sans);
+  font-size:13px; font-weight:600; white-space:nowrap; flex-shrink:0;
+  display:flex; align-items:center; gap:6px;
+}
+.btn-add:hover { filter:brightness(1.15); }
+
+/* MAP */
+#map-wrap { flex:1; position:relative; overflow:hidden; }
+#map { width:100%; height:100%; }
+
+/* FILTER BAR */
+#filter-bar {
+  position:absolute; bottom:70px; left:10px;
+  z-index:500; display:flex; gap:6px;
+  flex-direction:column;
+  background:var(--panel);
+  border:1px solid var(--border); border-radius:10px; padding:6px 8px;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.filter-btn {
+  display:flex; align-items:center; gap:5px; padding:5px 10px;
+  border-radius:6px; border:1px solid transparent; cursor:pointer;
+  font-size:11px; font-weight:600; background:transparent; color:var(--dim);
+  transition:all .15s; white-space:nowrap; width:100%;
+}
+.filter-btn.on { color:var(--text); }
+.filter-btn .dot { width:8px; height:8px; border-radius:50%; }
+.filter-btn.all.on { background:rgba(255,255,255,.08); border-color:var(--border); }
+.filter-btn.blue.on { background:rgba(56,139,253,.15); border-color:rgba(56,139,253,.4); color:var(--blue-light); }
+.filter-btn.orange.on { background:rgba(224,155,61,.15); border-color:rgba(224,155,61,.4); color:var(--orange-light); }
+.filter-btn.green.on { background:rgba(63,185,80,.15); border-color:rgba(63,185,80,.4); color:var(--green-light); }
+.filter-btn.pink.on { background:rgba(219,97,162,.15); border-color:rgba(219,97,162,.4); color:var(--pink-light); }
+
+/* SIDEBAR — always bottom sheet */
+#sidebar {
+  position:absolute; bottom:0; left:0; right:0; z-index:800;
+  background:var(--panel); border-top:1px solid var(--border);
+  border-radius:16px 16px 0 0;
+  transform:translateY(100%);
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  max-height:75vh; display:flex; flex-direction:column;
+  will-change:transform;
+}
+#sidebar.open { transform:translateY(0) !important; }
+.sidebar-handle {
+  width:36px; height:4px; background:var(--border); border-radius:2px;
+  margin:10px auto 0;
+}
+.sidebar-head {
+  display:flex; align-items:center; gap:10px; padding:12px 16px 8px;
+  border-bottom:1px solid var(--border);
+}
+.type-badge {
+  font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:1px;
+  padding:3px 8px; border-radius:4px;
+}
+.sidebar-title { font-size:16px; font-weight:700; flex:1; }
+.sidebar-close {
+  background:var(--card); border:1px solid var(--border); color:var(--dim);
+  border-radius:6px; padding:5px 10px; cursor:pointer; font-size:16px;
+}
+.sidebar-close:hover { color:var(--text); }
+.sidebar-body { overflow-y:auto; padding:12px 16px; flex:1; }
+
+/* PORT BAR */
+.port-bar-wrap { margin-bottom:14px; }
+.port-bar-labels { display:flex; justify-content:space-between; font-family:var(--mono); font-size:11px; color:var(--dim); margin-bottom:6px; }
+.port-bar-labels .free { color:var(--green); font-weight:700; }
+.port-bar { height:10px; background:var(--card); border-radius:5px; overflow:hidden; border:1px solid var(--border); }
+.port-bar-fill { height:100%; border-radius:4px; transition:width .4s; }
+
+/* FIELDS */
+.field-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.field-item { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+.field-label { font-family:var(--mono); font-size:9px; color:var(--dim); letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
+.field-value { font-size:13px; font-weight:600; color:var(--text); word-break:break-word; }
+
+/* SUBSCRIBERS */
+.subs-title { font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+.sub-list { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+.sub-item {
+  display:flex; align-items:center; gap:10px;
+  background:var(--card); border:1px solid var(--border); border-radius:8px; padding:9px 12px;
+}
+.sub-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.sub-info { flex:1; min-width:0; }
+.sub-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sub-meta { font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:1px; }
+.sub-status { font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:4px; flex-shrink:0; }
+.status-active   { background:rgba(63,185,80,.15);  color:var(--green); }
+.status-off      { background:rgba(224,155,61,.15); color:var(--orange); }
+.status-off-free { background:rgba(248,81,73,.15);  color:var(--red); }
+.status-free     { background:rgba(56,139,253,.1);  color:var(--blue); }
+
+/* COMMENTS */
+.comment-box { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:12px; }
+.comment-text { font-size:13px; color:var(--dim); line-height:1.5; }
+
+/* ACTION BTNS */
+.action-row { display:flex; gap:8px; padding-bottom:16px; }
+.btn { border:none; cursor:pointer; border-radius:8px; padding:10px 16px; font-family:var(--sans); font-size:13px; font-weight:600; flex:1; }
+.btn-edit { background:var(--card); border:1px solid var(--border); color:var(--text); }
+.btn-edit:hover { border-color:var(--blue); color:var(--blue); }
+.btn-del { background:rgba(248,81,73,.1); border:1px solid rgba(248,81,73,.3); color:var(--red); }
+.btn-del:hover { background:rgba(248,81,73,.2); }
+
+
+/* PHOTOS */
+.photo-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
+.photo-thumb {
+  position:relative; aspect-ratio:1/1; border-radius:10px; overflow:hidden;
+  border:1px solid var(--border); background:var(--card); cursor:pointer;
+}
+.photo-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.photo-thumb.avatar { box-shadow:0 0 0 2px var(--blue); }
+.photo-thumb .photo-label {
+  position:absolute; left:0; right:0; bottom:0; padding:4px 6px;
+  background:linear-gradient(transparent,rgba(0,0,0,.78));
+  color:#fff; font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.photo-empty { border:1px dashed var(--border); border-radius:10px; padding:16px; color:var(--dim); font-size:13px; text-align:center; margin-bottom:12px; }
+.photo-edit-list { display:flex; flex-direction:column; gap:8px; }
+.photo-edit-item { display:flex; gap:10px; align-items:center; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:8px; }
+.photo-edit-item img { width:58px; height:58px; object-fit:cover; border-radius:8px; border:1px solid var(--border); flex-shrink:0; }
+.photo-edit-fields { flex:1; min-width:0; }
+.photo-edit-actions { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.photo-mini-btn { background:rgba(255,255,255,.06); border:1px solid var(--border); color:var(--dim); border-radius:6px; padding:4px 8px; cursor:pointer; font-size:11px; }
+.photo-mini-btn:hover { color:var(--text); border-color:var(--dim); }
+.photo-mini-btn.danger { color:var(--red); border-color:rgba(248,81,73,.3); }
+#photo-viewer {
+  display:none; position:fixed; inset:0; z-index:1300; background:rgba(0,0,0,.9);
+  align-items:center; justify-content:center; padding:18px;
+}
+#photo-viewer.open { display:flex; }
+.photo-viewer-box { max-width:96vw; max-height:94vh; display:flex; flex-direction:column; gap:10px; align-items:center; }
+#photo-viewer-img { max-width:96vw; max-height:82vh; object-fit:contain; border-radius:10px; }
+#photo-viewer-title { color:#fff; font-size:14px; text-align:center; }
+.photo-viewer-close { position:fixed; top:14px; right:14px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:18px; }
+
+/* MODAL */
+#modal-overlay {
+  position:fixed; inset:0; z-index:900;
+  background:rgba(0,0,0,.7); backdrop-filter:blur(4px);
+  display:none; align-items:flex-end;
+}
+#modal-overlay.open { display:flex; }
+#modal {
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:16px 16px 0 0; width:100%;
+  max-height:90vh; display:flex; flex-direction:column;
+  animation:slideUp .25s ease;
+}
+@keyframes slideUp { from{transform:translateY(40px);opacity:0} to{transform:translateY(0);opacity:1} }
+.modal-head { display:flex; align-items:center; justify-content:space-between; padding:16px 16px 12px; border-bottom:1px solid var(--border); }
+.modal-title { font-size:16px; font-weight:700; }
+.modal-close { background:var(--card); border:1px solid var(--border); color:var(--dim); border-radius:6px; padding:5px 10px; cursor:pointer; font-size:16px; }
+.modal-body { overflow-y:auto; padding:14px 16px; flex:1; }
+.modal-footer { padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; }
+
+/* FORM */
+.form-group { margin-bottom:14px; }
+.form-label { font-family:var(--mono); font-size:10px; color:var(--dim); letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; display:block; }
+.form-input, .form-select, .form-textarea {
+  width:100%; background:var(--card); border:1px solid var(--border);
+  border-radius:8px; padding:10px 12px; color:var(--text);
+  font-family:var(--sans); font-size:14px; outline:none;
+  transition:border-color .15s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color:var(--blue); }
+.form-select { appearance:none; cursor:pointer; }
+.form-textarea { resize:vertical; min-height:70px; line-height:1.5; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form-hint { font-size:11px; color:var(--dim); margin-top:4px; }
+
+/* TYPE SELECTOR */
+.type-selector { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:14px; }
+.type-opt {
+  border:2px solid var(--border); border-radius:10px; padding:12px 10px;
+  cursor:pointer; text-align:center; transition:all .15s; background:var(--card);
+}
+.type-opt:hover { border-color:var(--dim); }
+.type-opt.selected-blue { border-color:var(--blue); background:rgba(56,139,253,.1); }
+.type-opt.selected-orange { border-color:var(--orange); background:rgba(224,155,61,.1); }
+.type-opt.selected-green { border-color:var(--green); background:rgba(63,185,80,.1); }
+.type-opt.selected-brown { border-color:#8b7355; background:rgba(139,115,85,.1); }
+.type-icon { font-size:24px; margin-bottom:4px; }
+.type-name { font-size:12px; font-weight:600; }
+.type-desc { font-size:10px; color:var(--dim); margin-top:2px; }
+
+/* SUBS EDITOR */
+.subs-editor { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+.sub-edit-item {
+  display:flex; gap:8px; align-items:center;
+  background:var(--card); border:1px solid var(--border); border-radius:8px; padding:8px 10px;
+}
+.sub-edit-item input, .sub-edit-item select {
+  background:transparent; border:none; color:var(--text);
+  font-family:var(--sans); font-size:13px; outline:none; min-width:0;
+}
+.sub-edit-item .f-name { flex:2; }
+.sub-edit-item .f-port { flex:1; font-family:var(--mono); font-size:12px; }
+.sub-edit-item .f-status { flex:1; cursor:pointer; }
+.sub-edit-del { background:none; border:none; color:var(--dim); cursor:pointer; font-size:16px; padding:0 4px; flex-shrink:0; }
+.sub-edit-del:hover { color:var(--red); }
+.btn-add-sub { background:rgba(56,139,253,.1); border:1px dashed rgba(56,139,253,.4); color:var(--blue); border-radius:8px; padding:8px; width:100%; cursor:pointer; font-size:13px; font-family:var(--sans); }
+.btn-add-sub:hover { background:rgba(56,139,253,.2); }
+
+/* MAP INFO TOAST */
+#tap-hint {
+  position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+  background:rgba(22,27,34,.9); border:1px solid var(--border);
+  border-radius:20px; padding:8px 16px;
+  font-size:12px; color:var(--dim); z-index:500;
+  pointer-events:none; white-space:nowrap;
+  transition:opacity .3s;
+}
+
+/* LEAFLET CUSTOM */
+.leaflet-container { background:#1a1f2a !important; }
+.leaflet-control-zoom { border:1px solid var(--border) !important; }
+.leaflet-control-zoom a { background:var(--panel) !important; color:var(--text) !important; border-bottom:1px solid var(--border) !important; }
+.leaflet-control-zoom a:hover { background:var(--card) !important; }
+.leaflet-control-attribution { display:none !important; }
+
+/* CUSTOM MARKER */
+.fm-marker {
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; border:3px solid #fff;
+  font-size:14px; font-weight:700;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  cursor:pointer; transition:transform .15s;
+  font-family:var(--mono);
+}
+.fm-marker:hover { transform:scale(1.15); }
+
+/* LAYER SWITCHER */
+#layer-switcher {
+  position:absolute; top:10px; right:10px; z-index:500;
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:10px; padding:6px 8px;
+  box-shadow:0 4px 16px rgba(0,0,0,.5);
+  display:flex; flex-direction:column; gap:5px;
+}
+.layer-label {
+  font-family:var(--mono); font-size:9px; color:var(--dim);
+  letter-spacing:2px; text-transform:uppercase; text-align:center;
+}
+.layer-btns { display:flex; flex-direction:column; gap:3px; }
+.layer-btn {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:6px; padding:5px 10px; cursor:pointer;
+  font-family:var(--sans); font-size:12px; font-weight:500;
+  color:var(--dim); text-align:center; transition:all .15s; white-space:nowrap;
+}
+.layer-btn:hover { border-color:var(--dim); color:var(--text); }
+.layer-btn.active-layer {
+  background:rgba(56,139,253,.15);
+  border-color:var(--blue);
+  color:var(--blue-light);
+  font-weight:700;
+}
+/* PROJECT DIALOG */
+.pdlg-overlay {
+  display:none; position:fixed; inset:0; z-index:1100;
+  background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+  align-items:center; justify-content:center;
+}
+.pdlg-overlay.show { display:flex; }
+.pdlg-box {
+  background:#161b22; border:1px solid #30363d; border-radius:14px;
+  width:90%; max-width:360px; padding:24px 20px;
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+}
+.pdlg-title { font-size:16px; font-weight:700; color:#e6edf3; margin-bottom:6px; }
+.pdlg-sub   { font-size:13px; color:#7d8590; margin-bottom:14px; }
+.pdlg-input {
+  width:100%; padding:10px 12px; border-radius:8px;
+  background:#1c2128; border:1px solid #30363d; color:#e6edf3;
+  font-size:15px; outline:none; margin-bottom:16px;
+  font-family:'Manrope',sans-serif; box-sizing:border-box;
+}
+.pdlg-input:focus { border-color:#388bfd; }
+.pdlg-btns { display:flex; gap:8px; }
+.pdlg-btn-cancel {
+  flex:1; padding:10px; border-radius:8px;
+  border:1px solid #30363d; background:#1c2128;
+  color:#7d8590; cursor:pointer; font-size:14px;
+  font-family:'Manrope',sans-serif;
+}
+.pdlg-btn-cancel:hover { color:#e6edf3; }
+.pdlg-btn-ok {
+  flex:2; padding:10px; border-radius:8px; border:none;
+  background:#388bfd; color:#fff; cursor:pointer;
+  font-size:14px; font-weight:600; font-family:'Manrope',sans-serif;
+}
+.pdlg-btn-ok:hover { filter:brightness(1.1); }
+.pdlg-btn-ok.danger { background:#f85149; }
+
+/* ROUTE EDIT BAR */
+#route-bar {
+  display:none; position:absolute; top:10px; left:50%;
+  transform:translateX(-50%); z-index:600;
+  background:#0d1117; border:1px solid #3fb950;
+  border-radius:10px; padding:8px 10px;
+  box-shadow:0 4px 16px rgba(0,0,0,.6);
+  align-items:center; gap:8px; flex-wrap:wrap;
+  max-width:90vw;
+}
+#route-bar.active { display:flex; }
+.route-bar-hint { font-size:12px; color:#aff5b4; white-space:nowrap; }
+.route-bar-btn {
+  background:#1c2128; border:1px solid #30363d; color:#e6edf3;
+  border-radius:6px; padding:5px 10px; cursor:pointer;
+  font-size:13px; font-family:'Manrope',sans-serif;
+}
+.route-bar-btn:hover { border-color:#7d8590; }
+.route-bar-btn.done { background:#3fb950; border-color:#3fb950; color:#0d1117; font-weight:700; }
+
+/* DRAG HIGHLIGHT on splitter */
+.fm-marker.drag-over {
+  transform:scale(1.3) !important;
+  box-shadow:0 0 0 4px #3fb950, 0 2px 12px rgba(0,0,0,.6) !important;
+}
+
+#my-loc-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 16px;
+  z-index: 700;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--green);
+  color: var(--text);
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5), 0 0 0 0 rgba(63,185,80,.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .15s, box-shadow .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+#my-loc-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 4px 20px rgba(0,0,0,.6), 0 0 0 6px rgba(63,185,80,.15);
+}
+#my-loc-btn:active { transform: scale(.95); }
+#my-loc-btn.locating {
+  animation: locBtnPulse 1s ease-in-out infinite;
+}
+@keyframes locBtnPulse {
+  0%,100% { box-shadow: 0 4px 16px rgba(0,0,0,.5), 0 0 0 0 rgba(63,185,80,.5); }
+  50%      { box-shadow: 0 4px 16px rgba(0,0,0,.5), 0 0 0 10px rgba(63,185,80,0); }
+}
+@keyframes myLocPulse {
+  0%,100% { transform:translate(-50%,-50%) scale(1); opacity:.8; }
+  50%     { transform:translate(-50%,-50%) scale(1.6); opacity:0; }
+}
+
+/* NO POINTS */
+.empty-state { text-align:center; padding:32px 20px; color:var(--dim); }
+.empty-icon { font-size:40px; margin-bottom:12px; }
+.empty-text { font-size:14px; line-height:1.6; }
+
+/* ═══════════════════════════
+   PROJECTS SCREEN
+═══════════════════════════ */
+#screen-projects {
+  display:none; flex-direction:column; height:100vh;
+  background:var(--bg);
+}
+#screen-map {
+  display:none; flex-direction:column; height:100vh;
+}
+#screen-map.active     { display:flex; }
+#screen-projects.active { display:flex; }
+
+.proj-topbar {
+
+  height:56px; background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 16px; gap:10px; flex-shrink:0;
+}
+.proj-logo { font-family:var(--mono); font-size:16px; font-weight:700; color:var(--blue); flex:1; }
+.proj-logo span { color:var(--dim); }
+.btn-new-proj {
+  background:var(--blue); color:#fff; border:none; cursor:pointer;
+  padding:8px 16px; border-radius:8px; font-family:var(--sans);
+  font-size:13px; font-weight:600; white-space:nowrap;
+}
+.btn-new-proj:hover { filter:brightness(1.15); }
+
+.proj-body { flex:1; overflow-y:auto; padding:16px; }
+
+.proj-section-label {
+  font-family:var(--mono); font-size:10px; color:var(--dim);
+  letter-spacing:2px; text-transform:uppercase;
+  margin-bottom:12px; padding-left:4px;
+}
+
+.proj-list { display:flex; flex-direction:column; gap:10px; }
+
+.proj-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:14px; padding:16px 18px; cursor:pointer;
+  transition:border-color .15s, transform .15s;
+  display:flex; align-items:center; gap:14px; position:relative;
+}
+.proj-card:hover { border-color:var(--blue); transform:translateY(-1px); }
+.proj-card:active { transform:scale(.98); }
+.proj-icon {
+  width:44px; height:44px; border-radius:12px;
+  background:rgba(56,139,253,.15); border:1px solid rgba(56,139,253,.3);
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; flex-shrink:0;
+}
+.proj-info { flex:1; min-width:0; }
+.proj-name { font-size:16px; font-weight:700; margin-bottom:4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.proj-stats { display:flex; gap:10px; flex-wrap:wrap; }
+.proj-stat {
+  font-family:var(--mono); font-size:11px; color:var(--dim);
+  display:flex; align-items:center; gap:4px;
+}
+.proj-stat .dot { width:7px; height:7px; border-radius:50%; }
+.proj-date { font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:4px; }
+.proj-arrow { color:var(--dim); font-size:18px; flex-shrink:0; }
+.proj-actions {
+  display:flex; gap:6px; flex-shrink:0;
+}
+.proj-btn {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:8px; padding:6px 10px; cursor:pointer;
+  font-size:14px; color:var(--dim); transition:all .15s;
+}
+.proj-btn:hover { border-color:var(--dim); color:var(--text); }
+.proj-btn.danger:hover { border-color:var(--red); color:var(--red); }
+
+.proj-empty {
+  text-align:center; padding:60px 20px; color:var(--dim);
+}
+.proj-empty-icon { font-size:48px; margin-bottom:16px; }
+.proj-empty-text { font-size:14px; line-height:1.7; }
+.proj-empty-text b { color:var(--text); }
+
+/* MAP TOPBAR with back btn */
+.back-btn {
+  background:var(--card); border:1px solid var(--border); color:var(--dim);
+  border-radius:8px; padding:6px 12px; cursor:pointer; font-size:13px;
+  font-weight:600; white-space:nowrap; display:flex; align-items:center; gap:5px;
+  flex-shrink:0;
+}
+.back-btn:hover { border-color:var(--blue); color:var(--blue); }
+.proj-name-tag {
+  font-family:var(--mono); font-size:12px; color:var(--dim);
+  background:rgba(56,139,253,.1); border:1px solid rgba(56,139,253,.2);
+  border-radius:6px; padding:3px 10px; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; max-width:120px;
+}
+
+@media(min-width:600px) {
+  #modal-overlay { align-items:center; }
+  #modal { max-width:480px; margin:auto; border-radius:16px; max-height:80vh; }
+  #sidebar { max-height:60vh; }
+  .proj-list { display:grid; grid-template-columns:1fr 1fr; }
+}
+
+#sidebar {
+    transition: transform 0.3s ease, width 0.3s ease;
+}
+#sidebar.collapsed {
+    transform: translateX(-100%);
+}
+#toggle-sidebar-btn {
+    position: absolute;
+    right: -40px;
+    top: 10px;
+    width: 35px;
+    height: 35px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0 5px 5px 0;
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1001;
+}
+
+</style>
+</head>
+<body>
+<!-- ══════════════════════════════════
+     PROJECTS SCREEN
+══════════════════════════════════ -->
+<div id="screen-projects" class="active">
+  <div class="proj-topbar">
+    <div class="proj-logo">Fiber<span>Map</span></div>
+  
+  <button class="proj-btn" onclick="exportData()" title="Экспорт данных">📤</button>
+  <button class="proj-btn" onclick="document.getElementById('import-file').click()" title="Импорт данных">📥</button>
+  <input type="file" id="import-file" style="display:none" accept=".json" onchange="importData(event)">
+    <button class="btn-new-proj" onclick="createProject()">+ Новый проект</button>
+  </div>
+  <div class="proj-body">
+    <div class="proj-section-label" id="proj-section-lbl">Проекты</div>
+    <div class="proj-list" id="proj-list"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MAP SCREEN
+══════════════════════════════════ -->
+<div id="screen-map">
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div id="topbar">
+    <button class="back-btn" onclick="goToProjects()">← Проекты</button>
+    <div class="proj-name-tag" id="current-proj-name">—</div>
+    <div class="stats-bar" id="stats-bar"></div>
+    <button class="btn-add" onclick="openAddModal()">+ Добавить</button>
+  </div>
+
+  <!-- MAP -->
+  <div id="map-wrap">
+    <div id="map"></div>
+
+    <!-- LAYER SWITCHER -->
+    <div id="layer-switcher">
+      <div class="layer-label">Карта</div>
+      <div class="layer-btns">
+        <button class="layer-btn" data-layer="twogis"   onclick="setTileLayer('twogis')">2GIS</button>
+        <button class="layer-btn" data-layer="satellite" onclick="setTileLayer('satellite')">Спутник</button>
+        <button class="layer-btn" data-layer="osm"      onclick="setTileLayer('osm')">OSM</button>
+      </div>
+    </div>
+
+    <!-- ROUTE EDIT TOOLBAR -->
+    <div id="route-bar">
+      <span class="route-bar-hint">📍 Нажимайте на карту — добавляете точки кабеля</span>
+      <button class="route-bar-btn" onclick="undoRoutePoint()">↩</button>
+      <button class="route-bar-btn" onclick="clearRoutePoints()">🗑</button>
+      <button class="route-bar-btn done" onclick="finishRouteEdit()">✓ Готово</button>
+      <button class="route-bar-btn" onclick="cancelRouteEdit()">✕</button>
+    </div>
+
+    <!-- FILTER BAR -->
+    <div id="filter-bar">
+      <button class="filter-btn all on" data-f="all" onclick="setFilter('all',this)">Все</button>
+      <button class="filter-btn blue" data-f="splitter" onclick="setFilter('splitter',this)">
+        <span class="dot" style="background:var(--blue)"></span>Сплиттеры
+      </button>
+      <button class="filter-btn orange" data-f="off" onclick="setFilter('off',this)">
+        <span class="dot" style="background:var(--orange)"></span>Откл.
+      </button>
+      <button class="filter-btn green" data-f="active" onclick="setFilter('active',this)">
+        <span class="dot" style="background:var(--green)"></span>Актив.
+      </button>
+      <button class="filter-btn pink" data-f="other" onclick="setFilter('other',this)">
+        <span class="dot" style="background:var(--pink)"></span>Прочее
+      </button>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+  <button id="toggle-sidebar-btn" title="Свернуть/Развернуть">☰</button>
+      <div class="sidebar-handle"></div>
+      <div class="sidebar-head" id="sidebar-head">
+        <div class="type-badge" id="sb-badge"></div>
+        <div class="sidebar-title" id="sb-title"></div>
+        <button class="sidebar-close" id="sidebar-close-btn">✕</button>
+      </div>
+      <div class="sidebar-body" id="sidebar-body"></div>
+    </div>
+
+    <!-- LIST PANEL -->
+    <div id="list-panel">
+      <div class="lp-handle"></div>
+      <div class="lp-head">
+        <div class="lp-title" id="lp-title">Все точки</div>
+        <div class="lp-count" id="lp-count"></div>
+        <button class="lp-close" id="lp-close-btn">✕</button>
+      </div>
+      <div class="lp-body" id="lp-body"></div>
+    </div>
+
+    <!-- LOCATION BUTTON -->
+    <button id="my-loc-btn" onclick="goToMyLocation()" title="Моё местоположение">🟢</button>
+
+    <!-- TAP HINT -->
+    <div id="tap-hint">Нажмите на карту чтобы добавить точку</div>
+  </div>
+</div><!-- /#app -->
+</div><!-- /#screen-map -->
+
+<!-- PROJECT DIALOG -->
+<div id="pdlg" class="pdlg-overlay">
+  <div class="pdlg-box">
+    <div class="pdlg-title" id="pdlg-title">Новый проект</div>
+    <div class="pdlg-sub" id="pdlg-sub"></div>
+    <input id="pdlg-input" class="pdlg-input" type="text" placeholder="Название проекта"
+      onkeydown="if(event.key==='Enter')pdlgOk()">
+    <div class="pdlg-btns">
+      <button class="pdlg-btn-cancel" onclick="pdlgCancel()">Отмена</button>
+      <button class="pdlg-btn-ok" id="pdlg-ok-btn" onclick="pdlgOk()">Создать</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- PHOTO VIEWER -->
+<div id="photo-viewer" onclick="closePhotoViewer(event)">
+  <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
+  <div class="photo-viewer-box">
+    <img id="photo-viewer-img" alt="Фото точки">
+    <div id="photo-viewer-title"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" onclick="closeModalOutside(event)">
+  <div id="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-title">Добавить точку</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-edit" style="flex:1" onclick="closeModal()">Отмена</button>
+      <button class="btn" style="background:var(--blue);color:#fff;flex:2" onclick="savePoint()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════
+// PROJECT STORAGE
+// ═══════════════════════════════
+const PROJ_KEY = 'fibermap_projects_v1';
+let projects    = [];   // all projects
+let currentProj = null; // active project object
+let points      = [];   // reference to currentProj.points
+
+// Стандартные цвета волокон (12 цветов по стандарту)
+const FIBER_COLORS = [
+  { id:'blue',    name:'Синий',      hex:'#2563c4' },
+  { id:'orange',  name:'Оранжевый',  hex:'#e09b3d' },
+  { id:'green',   name:'Зелёный',    hex:'#3fb950' },
+  { id:'brown',   name:'Коричневый', hex:'#8B5A2B' },
+  { id:'gray',    name:'Серый',      hex:'#8a9099' },
+  { id:'white',   name:'Белый',      hex:'#d0d7de' },
+  { id:'red',     name:'Красный',    hex:'#f85149' },
+  { id:'black',   name:'Чёрный',     hex:'#555e68' },
+  { id:'yellow',  name:'Жёлтый',     hex:'#e3b341' },
+  { id:'violet',  name:'Фиолетовый', hex:'#9f7aea' },
+  { id:'pink',    name:'Розовый',    hex:'#db61a2' },
+  { id:'teal',    name:'Бирюзовый',  hex:'#00b4d8' },
+];
+
+function fiberColorInfo(id) {
+  return FIBER_COLORS.find(c=>c.id===id) || null;
+}
+
+// ── Signal level helpers ──────────
+function signalColor(s) {
+  // s = {value, color} or legacy number
+  if (!s) return null;
+  if (typeof s === 'object') return s.color || null;
+  return null; // legacy — no auto color
+}
+function signalBadge(s) {
+  if (!s) return '';
+  const val = typeof s === 'object' ? s.value : s;
+  const col = typeof s === 'object' ? s.color : null;
+  if (val === null || val === undefined || val === '') return '';
+  const bg  = col || '#555';
+  return `<span style="display:inline-flex;align-items:center;gap:3px;background:${bg}22;
+    border:1px solid ${bg}55;border-radius:5px;padding:1px 6px;font-family:var(--mono);
+    font-size:11px;color:${col||'var(--dim)'};font-weight:600;white-space:nowrap">${val} dBm</span>`;
+}
+
+let editingId = null;
+let pendingLatLng = null;
+let activeFilter = 'all';
+let markers = {};
+let selectedId = null;
+
+// ── Project persistence ──────────
+function loadProjects() {
+  try {
+    const raw = localStorage.getItem(PROJ_KEY);
+    projects = raw ? JSON.parse(raw) : [];
+  } catch(e) { projects = []; }
+}
+function saveProjects() {
+  localStorage.setItem(PROJ_KEY, JSON.stringify(projects));
+}
+
+// ── Project dialog ──────────────
+let _pdlgCb   = null;
+let _pdlgMode = 'input'; // 'input' | 'confirm'
+
+function pdlgShow(title, sub, placeholder, okLabel, okDanger, cb) {
+  _pdlgCb   = cb;
+  _pdlgMode = placeholder ? 'input' : 'confirm';
+  document.getElementById('pdlg-title').textContent  = title;
+  document.getElementById('pdlg-sub').textContent    = sub || '';
+  const inp = document.getElementById('pdlg-input');
+  inp.placeholder = placeholder || '';
+  inp.value = '';
+  inp.style.display = placeholder ? '' : 'none';
+  const okBtn = document.getElementById('pdlg-ok-btn');
+  okBtn.textContent = okLabel || 'OK';
+  okBtn.className   = 'pdlg-btn-ok' + (okDanger ? ' danger' : '');
+  document.getElementById('pdlg').classList.add('show');
+  if (placeholder) setTimeout(()=>inp.focus(), 80);
+}
+
+function pdlgOk() {
+  const val = document.getElementById('pdlg-input').value.trim();
+  if (_pdlgMode === 'input' && !val) return; // require text
+  document.getElementById('pdlg').classList.remove('show');
+  if (_pdlgCb) _pdlgCb(val || true);
+  _pdlgCb = null;
+}
+
+function pdlgCancel() {
+  document.getElementById('pdlg').classList.remove('show');
+  _pdlgCb = null;
+}
+
+// ── Project actions ──────────────
+function createProject() {
+  pdlgShow('Новый проект', '', 'Название (напр. Ардагер)', 'Создать', false, name => {
+    const proj = { id:'proj_'+Date.now(), name, created:Date.now(), points:[] };
+    projects.push(proj);
+    saveProjects();
+    renderProjectsList();
+  });
+}
+
+function renameProject(id, e) {
+  e && e.stopPropagation();
+  const proj = projects.find(p=>p.id===id);
+  if (!proj) return;
+  pdlgShow('Переименовать проект', '', proj.name, 'Сохранить', false, name => {
+    proj.name = name;
+    saveProjects();
+    renderProjectsList();
+  });
+}
+
+function deleteProject(id, e) {
+  e && e.stopPropagation();
+  const proj = projects.find(p=>p.id===id);
+  if (!proj) return;
+  pdlgShow(`Удалить проект «${proj.name}»?`, 'Все точки будут удалены безвозвратно.', '', 'Удалить', true, () => {
+    projects = projects.filter(p=>p.id!==id);
+    saveProjects();
+    renderProjectsList();
+  });
+}
+
+function formatDate(ts) {
+  const d = new Date(ts);
+  return d.toLocaleDateString('ru-RU', {day:'2-digit',month:'2-digit',year:'numeric'});
+}
+
+function renderProjectsList() {
+  const list = document.getElementById('proj-list');
+  const lbl  = document.getElementById('proj-section-lbl');
+  lbl.textContent = `Проекты (${projects.length})`;
+  if (!projects.length) {
+    list.innerHTML = `<div class="proj-empty">
+      <div class="proj-empty-icon">📁</div>
+      <div class="proj-empty-text">Проектов пока нет.<br>Нажмите <b>+ Новый проект</b> чтобы начать.</div>
+    </div>`;
+    return;
+  }
+  list.innerHTML = projects.map(proj => {
+    const pts = proj.points || [];
+    const spl = pts.filter(p=>p.type==='splitter');
+    const freeTotal = spl.reduce((a,p)=>a+_freePorts(p),0);
+    const offCount  = pts.filter(p=>p.type==='off').length;
+    return `
+    <div class="proj-card" onclick="openProject('${proj.id}')">
+      <div class="proj-icon">📍</div>
+      <div class="proj-info">
+        <div class="proj-name">${proj.name}</div>
+        <div class="proj-stats">
+          <div class="proj-stat"><span class="dot" style="background:#388bfd"></span>${spl.length} спл.</div>
+          <div class="proj-stat"><span class="dot" style="background:#3fb950"></span>${freeTotal} своб.</div>
+          <div class="proj-stat"><span class="dot" style="background:#e09b3d"></span>${offCount} откл.</div>
+        </div>
+        <div class="proj-date">Создан ${formatDate(proj.created)}</div>
+      </div>
+      <div class="proj-actions">
+        <button class="proj-btn" onclick="renameProject('${proj.id}',event)" title="Переименовать">✏️</button>
+        <button class="proj-btn danger" onclick="deleteProject('${proj.id}',event)" title="Удалить">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openProject(id) {
+  currentProj = projects.find(p=>p.id===id);
+  if (!currentProj) return;
+  if (!currentProj.points) currentProj.points = [];
+  points = currentProj.points;
+  document.getElementById('current-proj-name').textContent = currentProj.name;
+
+  // switch screens
+  document.getElementById('screen-projects').classList.remove('active');
+  document.getElementById('screen-map').classList.add('active');
+
+  // reset state
+  closeSidebar();
+  closeListPanel();
+  activeFilter = 'all';
+
+  // render map
+  renderMarkers();
+  renderStats();
+
+  // invalidate map size after display change
+  setTimeout(()=>{
+    map.invalidateSize();
+    // если есть точки — показать их список снизу
+    if (points.length > 0) {
+      openListPanel('all');
+    }
+  }, 80);
+}
+
+function goToProjects() {
+  // save before leaving
+  saveProjects();
+  // clear markers
+  Object.values(markers).forEach(m=>map.removeLayer(m));
+  markers = {};
+  currentProj = null;
+  points = [];
+  closeSidebar();
+  closeListPanel();
+  document.getElementById('screen-map').classList.remove('active');
+  document.getElementById('screen-projects').classList.add('active');
+  renderProjectsList();
+}
+
+// helper freePorts without circular ref
+function _freePorts(p) {
+  if (p.type !== 'splitter') return 0;
+  const spls = (p.splitters && p.splitters.length)
+    ? p.splitters
+    : [{ portsTotal: p.portsTotal||0, subs: p.subs||[] }];
+  return spls.reduce((t, spl) => {
+    const used = (spl.subs||[]).filter(s=>s.status==='active').length;
+    return t + Math.max(0,(spl.portsTotal||0)-used);
+  }, 0);
+}
+
+// ── Point access ─────────────────
+function save() {
+  if (currentProj) {
+    currentProj.points = points;
+    saveProjects();
+  }
+}
+function getPoint(id) { return points.find(p=>p.id===id); }
+
+// ═══════════════════════════════
+// MAP
+// ═══════════════════════════════
+const map = L.map('map', {
+  center: [51.185, 71.447],
+  zoom: 16,
+  zoomControl: true,
+  attributionControl: false,
+});
+
+// ── TILE LAYERS ──────────────────
+const TILE_LAYERS = {
+  twogis: {
+    label: '2GIS',
+    url: 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1&r=g&ts=online_sd',
+    opts: { maxZoom:19, subdomains:'0123' },
+  },
+  satellite: {
+    label: 'Спутник',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    opts: { maxZoom:19 },
+  },
+  osm: {
+    label: 'OSM',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opts: { maxZoom:19, subdomains:'abc' },
+  },
+};
+let currentLayer = null;
+let currentLayerKey = 'google';
+
+function setTileLayer(key) {
+  if (currentLayer) map.removeLayer(currentLayer);
+  const cfg = TILE_LAYERS[key];
+  currentLayer = L.tileLayer(cfg.url, cfg.opts).addTo(map);
+  currentLayerKey = key;
+  // update button states
+  document.querySelectorAll('.layer-btn').forEach(b => {
+    b.classList.toggle('active-layer', b.dataset.layer === key);
+  });
+  // save preference
+  try { localStorage.setItem('fm_layer', key); } catch(e){}
+}
+
+// Init tile layer (restore saved preference)
+const savedLayer = (()=>{ try{ return localStorage.getItem('fm_layer'); }catch(e){return null;} })();
+setTileLayer(TILE_LAYERS[savedLayer] ? savedLayer : 'twogis');
+
+function typeConfig(type, splitterType) {
+  switch(type) {
+    case 'muff':
+      return { color:'#8b7355', label:'МУФТА', badgeBg:'rgba(139,115,85,.2)', badgeColor:'#d4b896' };
+    case 'splitter':
+      if (splitterType === 'trunk')
+        return { color:'#7c3aed', label:'БОК.МАГИСТР.', badgeBg:'rgba(124,58,237,.2)', badgeColor:'#ddd6fe' };
+      if (splitterType === 'mixed')
+        return { color:'#0891b2', label:'БОК.СМЕШАН.', badgeBg:'rgba(8,145,178,.2)', badgeColor:'#a5f3fc' };
+      return { color:'#388bfd', label:'БОК.АБОНЕНТ.', badgeBg:'rgba(56,139,253,.2)', badgeColor:'#cae8ff' };
+    case 'off':      return { color:'#e09b3d', label:'ОТКЛ.',   badgeBg:'rgba(224,155,61,.2)',  badgeColor:'#ffddb3' };
+    case 'active':   return { color:'#3fb950', label:'АБОНЕНТ', badgeBg:'rgba(63,185,80,.2)',   badgeColor:'#aff5b4' };
+    case 'other':    return { color:'#db61a2', label:'ПРОЧЕЕ',  badgeBg:'rgba(219,97,162,.2)',  badgeColor:'#ffd6f0' };
+    default:         return { color:'#7d8590', label:'ТОЧКА',   badgeBg:'rgba(125,133,144,.2)', badgeColor:'#ccc' };
+  }
+}
+
+// Determine effective splitter type for a box point
+function boxSplitterType(point) {
+  const spls = point.splitters || [];
+  if (!spls.length) return 'subscriber';
+  const types = [...new Set(spls.map(s=>s.splitterType||'subscriber'))];
+  if (types.length > 1) return 'mixed';
+  return types[0];
+}
+
+// Returns the port status linked to a subscriber point (via subscriberId stored on port)
+function getLinkedPortStatus(pointId) {
+  if (!currentProj) return null;
+  for (const pt of points) {
+    if (pt.type !== 'splitter') continue;
+    const spls = _getSplitters(pt);
+    for (const s of spls) {
+      const port = (s.subs||[]).find(p => p.subscriberId === pointId);
+      if (port) return port.status;
+    }
+  }
+  return null;
+}
+
+function effectiveStatus(p) {
+  const linkedStatus = getLinkedPortStatus(p.id);
+
+  if (linkedStatus === 'off_free') return 'off_free';
+  if (linkedStatus === 'off') return 'off';
+  if (linkedStatus === 'active') return 'active';
+
+  return p.type;
+}
+
+function isOffPoint(p) {
+  const s = effectiveStatus(p);
+  return s === 'off' || s === 'off_free';
+}
+  
+function makeIcon(point) {
+  if (point.type === 'muff') {
+    const cfg = typeConfig('muff');
+    const html = `<div class="fm-marker" style="width:36px;height:36px;background:${cfg.color};border-color:rgba(255,255,255,.9);font-size:13px;color:#fff;">⌀</div>`;
+    return L.divIcon({ html, className:'', iconSize:[36,36], iconAnchor:[18,18] });
+  }
+
+  if (point.type === 'splitter') {
+    const spls  = _getSplitters(point);
+    const size  = spls.length > 1 ? 44 : 36;
+    const half  = size / 2;
+
+    if (spls.length === 1) {
+      // Single splitter — simple circle
+      const spl  = spls[0];
+      const free = Math.max(0,(spl.portsTotal||0)-(spl.subs||[]).filter(s=>s.status==='active').length);
+      const col  = spl.splitterType==='trunk' ? '#7c3aed' : '#388bfd';
+      const fs   = String(free).length > 1 ? 11 : 15;
+      const html = `<div class="fm-marker" style="width:${size}px;height:${size}px;background:${col};border-color:rgba(255,255,255,.9);font-size:${fs}px;color:#fff;">${free}</div>`;
+      return L.divIcon({ html, className:'', iconSize:[size,size], iconAnchor:[half,half] });
+    }
+
+    // Multiple splitters — split circle
+    const COLS = ['#388bfd','#7c3aed','#0891b2','#059669','#d97706'];
+    const pct  = 100 / spls.length;
+    const sections = spls.map((spl, i) => {
+      const free = Math.max(0,(spl.portsTotal||0)-(spl.subs||[]).filter(s=>s.status==='active').length);
+      const col  = spl.splitterType==='trunk' ? '#7c3aed' : COLS[i % COLS.length];
+      const fs   = String(free).length > 1 ? 10 : 14;
+      return `<div style="
+        flex:1;display:flex;align-items:center;justify-content:center;
+        background:${col};color:#fff;font-size:${fs}px;font-weight:700;
+        ${i===0 ? 'border-radius:'+(half)+'px '+(half)+'px 0 0;' : ''}
+        ${i===spls.length-1 ? 'border-radius:0 0 '+(half)+'px '+(half)+'px;' : ''}
+        line-height:1;
+      ">${free}</div>`;
+    }).join('');
+
+    const html = `<div style="
+      width:${size}px;height:${size}px;border-radius:50%;
+      border:2.5px solid rgba(255,255,255,.9);overflow:hidden;
+      display:flex;flex-direction:column;
+      box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer;
+    ">${sections}</div>`;
+    return L.divIcon({ html, className:'', iconSize:[size,size], iconAnchor:[half,half] });
+  }
+
+  // off / active / other — plain colored circle, no symbol
+  const cfg  = typeConfig(point.type);
+  let markerColor = cfg.color;
+
+  // Цвет точки по связанному порту независимо от типа абонента
+  const portStatus = getLinkedPortStatus(point.id);
+  if (portStatus === 'off_free') markerColor = '#f85149';
+  else if (portStatus === 'off') markerColor = '#e09b3d';
+  else if (portStatus === 'active') markerColor = '#3fb950';
+
+
+  const size = 28;
+  const html = `<div style="
+    width:${size}px;height:${size}px;border-radius:50%;
+    background:${markerColor};border:3px solid rgba(255,255,255,.9);
+    box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer;
+  "></div>`;
+  return L.divIcon({ html, className:'', iconSize:[size,size], iconAnchor:[size/2,size/2] });
+}
+
+// ── Port helpers (support both old single-splitter and new splitters[] array) ──
+function _getSplitters(point) {
+  // new format
+  if (point.splitters && point.splitters.length) return point.splitters;
+  // old format: wrap single splitter
+  if (point.type === 'splitter') return [{ splitterType:'subscriber', portsTotal: point.portsTotal||0, subs: point.subs||[] }];
+  return [];
+}
+
+function freePorts(point) {
+  if (point.type !== 'splitter') return 0;
+  return _getSplitters(point).reduce((t, spl) => {
+    const used = (spl.subs||[]).filter(s=>s.status==='active').length;
+    return t + Math.max(0,(spl.portsTotal||0)-used);
+  }, 0);
+}
+function usedPorts(point) {
+  return _getSplitters(point).reduce((t, spl) =>
+    t + (spl.subs||[]).filter(s=>s.status==='active').length, 0);
+}
+
+function renderMarkers() {
+  Object.values(markers).forEach(m=>map.removeLayer(m));
+  markers = {};
+  points.forEach(p => {
+    if (
+      activeFilter !== 'all' &&
+      !(
+        p.type === activeFilter ||
+        (activeFilter === 'off' && isOffPoint(p)) ||
+        (activeFilter === 'active' && effectiveStatus(p) === 'active')
+      )
+    ) return;
+    const m = L.marker([p.lat, p.lng], { icon: makeIcon(p), draggable: false });
+    m.on('click', () => openSidebar(p.id));
+    m.addTo(map);
+    markers[p.id] = m;
+    // Only splitters and muffs can be dragged to reposition or create routes
+    if (p.type === 'splitter' || p.type === 'muff') enableDrag(m, p.id);
+  });
+  renderStats();
+}
+
+function refreshMarker(id) {
+  const p = getPoint(id);
+  if (!p) return;
+  if (markers[id]) map.removeLayer(markers[id]);
+  if (
+    activeFilter !== 'all' &&
+    !(
+      p.type === activeFilter ||
+      (activeFilter === 'off' && isOffPoint(p)) ||
+      (activeFilter === 'active' && effectiveStatus(p) === 'active')
+    )
+  ) return;
+  const m = L.marker([p.lat, p.lng], { icon: makeIcon(p), draggable: false });
+  m.on('click', () => openSidebar(p.id));
+  m.addTo(map);
+  markers[id] = m;
+  if (p.type === 'splitter' || p.type === 'muff') enableDrag(m, id);
+}
+
+// Click on map to add
+let tapHintTimeout;
+map.on('click', e => {
+  if (routeEditMode) return; // don't open modal during route drawing
+  if (document.getElementById('modal-overlay').classList.contains('open')) return;
+  pendingLatLng = e.latlng;
+  openAddModal();
+});
+
+// ═══════════════════════════════
+// ROUTES — кабельные маршруты
+// ═══════════════════════════════
+let routeLines     = {};   // routeId → L.Polyline (displayed)
+let routeEditMode  = false;
+let editingRouteId = null;
+let routeEditPts   = [];   // [[lat,lng], ...]
+let routeEditLine  = null;
+let routeEditMarkers = [];
+let routeIsNew     = false; // true = новый маршрут, B ещё не добавлена
+
+function getRoutes()      { if(!currentProj.routes) currentProj.routes=[]; return currentProj.routes; }
+function saveRoutes()     { save(); }
+
+
+function routeDistanceMeters(route) {
+  if (!route || !route.waypoints || route.waypoints.length < 2) return 0;
+
+  let total = 0;
+
+  for (let i = 1; i < route.waypoints.length; i++) {
+    const a = L.latLng(route.waypoints[i - 1][0], route.waypoints[i - 1][1]);
+    const b = L.latLng(route.waypoints[i][0], route.waypoints[i][1]);
+    total += a.distanceTo(b);
+  }
+
+  return total;
+}
+
+function formatDistance(meters) {
+  if (meters >= 1000) return (meters / 1000).toFixed(2) + ' км';
+  return Math.round(meters) + ' м';
+}
+
+function totalRoutesDistance() {
+  return getRoutes().reduce((sum, r) => sum + routeDistanceMeters(r), 0);
+}
+
+function getRoutesForPoint(pid) {
+  return getRoutes().filter(r => r.subscriberId===pid || r.splitterId===pid);
+}
+
+// ── Display routes ────────────────
+function showRoutesForPoint(pid) {
+  hideAllRouteLines();
+  getRoutesForPoint(pid).forEach(r => drawRouteLine(r, false));
+}
+
+function drawRouteLine(route, editing) {
+  if (!route.waypoints || route.waypoints.length < 2) return;
+  const sub = getPoint(route.subscriberId);
+  const col = sub && sub.type==='active' ? '#3fb950' : '#e09b3d';
+  if (routeLines[route.id]) map.removeLayer(routeLines[route.id]);
+  const line = L.polyline(route.waypoints, {
+    color: col, weight: 3,
+    dashArray: editing ? '8 5' : null,
+    opacity: 0.85,
+  }).addTo(map);
+  line.on('click', () => startRouteEdit(route.id));
+  routeLines[route.id] = line;
+}
+
+function hideAllRouteLines() {
+  Object.values(routeLines).forEach(l => map.removeLayer(l));
+  routeLines = {};
+}
+
+// ── Route edit ───────────────────
+function startRouteEdit(routeId) {
+  if (routeEditMode) cancelRouteEdit();
+  const route = getRoutes().find(r => r.id === routeId);
+  if (!route) return;
+  editingRouteId = routeId;
+  routeEditMode  = true;
+  routeIsNew     = false; // editing existing — B is fixed
+
+  const sub = getPoint(route.subscriberId);
+  const spl = getPoint(route.splitterId);
+  routeEditPts = route.waypoints && route.waypoints.length >= 2
+    ? JSON.parse(JSON.stringify(route.waypoints))
+    : [[sub.lat, sub.lng], [spl.lat, spl.lng]];
+
+  _drawEditLine();
+  document.getElementById('route-bar').classList.add('active');
+  map._routeClickHandler = e => {
+    if (!routeEditMode) return;
+    // Insert before last point (B stays at end)
+    routeEditPts.splice(routeEditPts.length - 1, 0, [e.latlng.lat, e.latlng.lng]);
+    _drawEditLine();
+  };
+  map.on('click', map._routeClickHandler);
+  closeSidebar();
+}
+
+function startNewRoute(subscriberId, splitterId) {
+  const route = {
+    id: 'route_' + Date.now(),
+    subscriberId, splitterId,
+    waypoints: [],
+  };
+  getRoutes().push(route);
+  saveRoutes();
+
+  // New route: start ONLY from A, B added on finish
+  routeIsNew = true;
+  editingRouteId = route.id;
+  routeEditMode  = true;
+  const sub = getPoint(subscriberId);
+  routeEditPts = sub ? [[sub.lat, sub.lng]] : [];
+
+  _drawEditLine();
+  document.getElementById('route-bar').classList.add('active');
+  map._routeClickHandler = e => {
+    if (!routeEditMode) return;
+    routeEditPts.push([e.latlng.lat, e.latlng.lng]); // append to end
+    _drawEditLine();
+  };
+  map.on('click', map._routeClickHandler);
+  closeSidebar();
+}
+
+function _drawEditLine() {
+  if (routeEditLine) map.removeLayer(routeEditLine);
+  routeEditMarkers.forEach(m => map.removeLayer(m));
+  routeEditMarkers = [];
+
+  routeEditLine = L.polyline(routeEditPts, {
+    color:'#3fb950', weight:3, dashArray:'8 5',
+  }).addTo(map);
+
+  routeEditPts.forEach((pt, i) => {
+    // For new routes: only A (i=0) is a fixed endpoint — no B yet
+    // For existing: A (i=0) and B (last) are fixed
+    const isEndpoint = routeIsNew
+      ? i === 0
+      : (i === 0 || i === routeEditPts.length - 1);
+    const color = isEndpoint ? '#3fb950' : '#ffb84d';
+    const size  = isEndpoint ? 14 : 12;
+
+    const icon = L.divIcon({
+      html: `<div style="
+        width:${size}px;height:${size}px;border-radius:50%;
+        background:${color};border:2.5px solid #fff;
+        box-shadow:0 1px 5px rgba(0,0,0,.5);
+        cursor:${isEndpoint?'default':'move'};
+      "></div>`,
+      className: '',
+      iconSize:   [size, size],
+      iconAnchor: [size/2, size/2],
+    });
+
+    const m = L.marker([pt[0], pt[1]], {
+      icon,
+      draggable: !isEndpoint,
+      zIndexOffset: 100,
+    }).addTo(map);
+
+    if (!isEndpoint) {
+      // Drag — update coordinate in real time
+      m.on('drag', e => {
+        const ll = e.target.getLatLng();
+        routeEditPts[i] = [ll.lat, ll.lng];
+        routeEditLine.setLatLngs(routeEditPts);
+      });
+
+      // Double-click — delete this waypoint
+      m.on('dblclick', e => {
+        L.DomEvent.stopPropagation(e);
+        routeEditPts.splice(i, 1);
+        _drawEditLine();
+      });
+
+      // Prevent map click when clicking waypoint
+      m.on('click', e => L.DomEvent.stopPropagation(e));
+    }
+
+    routeEditMarkers.push(m);
+  });
+}
+
+function undoRoutePoint() {
+  if (routeIsNew) {
+    // Remove last added point (keep A as minimum)
+    if (routeEditPts.length > 1) { routeEditPts.pop(); _drawEditLine(); }
+  } else {
+    // Remove point before B (keep A and B)
+    if (routeEditPts.length > 2) { routeEditPts.splice(routeEditPts.length - 2, 1); _drawEditLine(); }
+  }
+}
+
+function clearRoutePoints() {
+  const route = getRoutes().find(r => r.id === editingRouteId);
+  const sub = route ? getPoint(route.subscriberId) : null;
+  const spl = route ? getPoint(route.splitterId)   : null;
+  if (routeIsNew) {
+    routeEditPts = sub ? [[sub.lat, sub.lng]] : [];
+  } else {
+    routeEditPts = (sub && spl) ? [[sub.lat, sub.lng],[spl.lat, spl.lng]] : routeEditPts.slice(0,2);
+  }
+  _drawEditLine();
+}
+
+function finishRouteEdit() {
+  const route = getRoutes().find(r => r.id === editingRouteId);
+  if (route) {
+    let pts = JSON.parse(JSON.stringify(routeEditPts));
+    if (routeIsNew) {
+      const spl = getPoint(route.splitterId);
+      if (spl) pts.push([spl.lat, spl.lng]);
+
+      // Auto-populate first free port in splitter with subscriber info
+      const sub = getPoint(route.subscriberId);
+      if (sub && spl && spl.type === 'splitter') {
+        const spls = _getSplitters(spl);
+        let filled = false;
+        for (let si = 0; si < spls.length && !filled; si++) {
+          const s = spls[si];
+          const fi = (s.subs||[]).findIndex(p => p.status === 'free');
+          if (fi >= 0) {
+            const port = s.subs[fi];
+            port.status       = sub.type === 'active' ? 'active' : 'off';
+            port.address      = (sub.name||'').trim();
+            port.person       = (sub.name||'').trim();
+            port.subscriberId = route.subscriberId; // link for marker sync
+            if (sub.signal) port.signal = sub.signal;
+            // write back
+            if (spl.splitters && spl.splitters[si]) {
+              spl.splitters[si].subs[fi] = port;
+            }
+            filled = true;
+          }
+        }
+        if (filled) refreshMarker(spl.id);
+      }
+    }
+    route.waypoints = pts;
+    saveRoutes();
+  }
+  const pid = route ? (route.subscriberId || route.splitterId) : null;
+  _cleanupRouteEdit();
+  if (route) { drawRouteLine(route, false); if (pid) openSidebar(pid); }
+}
+
+function cancelRouteEdit() { _cleanupRouteEdit(); }
+
+function _cleanupRouteEdit() {
+  if (map._routeClickHandler) { map.off('click', map._routeClickHandler); map._routeClickHandler = null; }
+  if (routeEditLine) { map.removeLayer(routeEditLine); routeEditLine = null; }
+  routeEditMarkers.forEach(m => map.removeLayer(m)); routeEditMarkers = [];
+  routeEditMode = false; routeIsNew = false; editingRouteId = null; routeEditPts = [];
+  document.getElementById('route-bar').classList.remove('active');
+}
+
+function deleteRoute(routeId) {
+  if (routeLines[routeId]) { map.removeLayer(routeLines[routeId]); delete routeLines[routeId]; }
+  if (currentProj) currentProj.routes = getRoutes().filter(r=>r.id!==routeId);
+  saveRoutes();
+}
+
+// ── Pick target point for route (any type) ──
+let _pickingTargetFor = null;
+
+function startPickTarget(fromId) {
+  _pickingTargetFor = fromId;
+  closeSidebar();
+  showLocToast('👆 Нажмите на любую точку на карте — она станет концом маршрута');
+  // Temporarily override marker clicks
+  Object.keys(markers).forEach(pid => {
+    const m = markers[pid];
+    if (!m || pid === fromId) return;
+    m._origClick = m._events?.click?.[0]?.fn;
+    m.off('click');
+    m.on('click', () => {
+      _finishPickTarget(pid);
+    });
+  });
+  // Cancel on map click (not on marker)
+  map._pickCancelHandler = () => {
+    if (_pickingTargetFor) _cancelPickTarget();
+  };
+  // Use a short delay so this click doesn't immediately trigger cancel
+  setTimeout(() => map.on('click', map._pickCancelHandler), 300);
+}
+
+function _finishPickTarget(toId) {
+  const fromId = _pickingTargetFor;
+  _cancelPickTarget();
+  if (fromId && toId && fromId !== toId) offerLinkToPoint(fromId, toId);
+}
+
+function _cancelPickTarget() {
+  _pickingTargetFor = null;
+  if (map._pickCancelHandler) { map.off('click', map._pickCancelHandler); map._pickCancelHandler = null; }
+  // Restore original marker clicks
+  Object.keys(markers).forEach(pid => {
+    const m = markers[pid];
+    if (!m) return;
+    m.off('click');
+    m.on('click', () => openSidebar(pid));
+  });
+}
+function enableDrag(marker, pointId) {
+  marker.dragging.enable();
+  let dragHighlightId = null;
+
+  marker.on('drag', e => {
+    const pos = e.latlng;
+    let nearest = null, minD = Infinity;
+    points.forEach(sp => {
+      if (sp.id === pointId) return; // skip self
+      const sd = map.latLngToContainerPoint([sp.lat, sp.lng]);
+      const dd = map.latLngToContainerPoint(pos);
+      const d  = Math.hypot(sd.x-dd.x, sd.y-dd.y);
+      if (d < 50 && d < minD) { minD = d; nearest = sp; }
+    });
+    // Update highlight
+    if (dragHighlightId && dragHighlightId !== nearest?.id) {
+      markers[dragHighlightId]?.getElement()?.querySelector('.fm-marker')?.classList.remove('drag-over');
+      dragHighlightId = null;
+    }
+    if (nearest) {
+      markers[nearest.id]?.getElement()?.querySelector('.fm-marker')?.classList.add('drag-over');
+      dragHighlightId = nearest.id;
+    }
+  });
+
+  marker.on('dragend', e => {
+    if (dragHighlightId) {
+      markers[dragHighlightId]?.getElement()?.querySelector('.fm-marker')?.classList.remove('drag-over');
+    }
+    const pos = e.target.getLatLng();
+    const p = getPoint(pointId);
+    if (p) { p.lat = pos.lat; p.lng = pos.lng; save(); }
+
+    // Find nearest any-type point within 50px
+    let nearest = null, minD = Infinity;
+    points.forEach(sp => {
+      if (sp.id === pointId) return;
+      const sd = map.latLngToContainerPoint([sp.lat, sp.lng]);
+      const dd = map.latLngToContainerPoint(pos);
+      const d  = Math.hypot(sd.x-dd.x, sd.y-dd.y);
+      if (d < 50 && d < minD) { minD = d; nearest = sp; }
+    });
+
+    dragHighlightId = null;
+    if (nearest) offerLinkToPoint(pointId, nearest.id);
+  });
+}
+
+function offerLinkToPoint(fromId, toId) {
+  const from = getPoint(fromId);
+  const to   = getPoint(toId);
+  if (!from || !to) return;
+
+  // Check if route already exists between these two
+  const existing = getRoutes().find(r =>
+    (r.subscriberId===fromId && r.splitterId===toId) ||
+    (r.subscriberId===toId   && r.splitterId===fromId)
+  );
+
+  const typeLabel = t => t==='splitter'?'Бокс':t==='muff'?'Муфта':t==='active'?'Абонент':'Откл.';
+  const fromLabel = `${typeLabel(from.type)}: ${from.name||'—'}`;
+  const toLabel   = `${typeLabel(to.type)}: ${to.name||'—'}`;
+
+  pdlgShow(
+    existing ? 'Изменить маршрут?' : 'Создать маршрут?',
+    `${fromLabel} → ${toLabel}`,
+    '', existing ? 'Перестроить' : 'Нарисовать маршрут', false,
+    () => {
+      if (existing) deleteRoute(existing.id);
+      startNewRoute(fromId, toId);
+    }
+  );
+}
+
+function routeHtmlForPoint(pid) {
+  const routes = getRoutesForPoint(pid);
+  if (!routes.length) return '';
+  let html = `<div class="subs-title" style="margin-bottom:6px">🔌 Кабельный маршрут</div>`;
+  routes.forEach(r => {
+    const other = r.subscriberId===pid ? getPoint(r.splitterId) : getPoint(r.subscriberId);
+    const pts   = r.waypoints ? r.waypoints.length : 0;
+    const col   = other && other.type==='splitter' ? '#388bfd' : other && other.type==='muff' ? '#8b7355' : '#7d8590';
+    html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">→ ${other?other.name:'?'}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:2px">${pts} точек · ${pts>2?'произвольный маршрут':'прямая линия'}</div>
+        </div>
+        <button onclick="startRouteEdit('${r.id}')" style="background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:#3fb950;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12px;white-space:nowrap">✏️ Редакт.</button>
+        <button onclick="deleteRoute('${r.id}');openSidebar('${pid}')" style="background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.2);color:#f85149;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:12px;">🗑</button>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+function renderStats() {
+  const totalKm = formatDistance(totalRoutesDistance());
+  const splitters  = points.filter(p=>p.type==='splitter');
+  const muffs      = points.filter(p=>p.type==='muff');
+  const totalFree  = splitters.reduce((a,p)=>a+freePorts(p),0);
+  const offList    = points.filter(p => isOffPoint(p));
+  const activeList = points.filter(p => effectiveStatus(p) === 'active');
+
+  const chips = [
+    { label:'Все',    val: points.length,    dot:'#7d8590', filter:'all'      },
+    { label:'боксы',  val: splitters.length,  dot:'#388bfd', filter:'splitter' },
+    { label:'муфты',  val: muffs.length,      dot:'#8b7355', filter:'muff'     },
+    { label:'своб.',  val: totalFree,         dot:'#3fb950', filter:'free'     },
+    { label:'откл.',  val: offList.length,    dot:'#e09b3d', filter:'off'      },
+    { label:'актив.', val: activeList.length, dot:'#3fb950', filter:'active'   },
+  ];
+
+  document.getElementById('stats-bar').innerHTML = chips.map(c=>`
+    <div class="stat-chip" onclick="openListPanel('${c.filter}')" style="color:${c.dot}">
+      <span class="dot" style="background:${c.dot}"></span>
+      <span class="val" style="color:var(--text)">${c.val}</span>
+      <span class="lbl">${c.label}</span>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════
+// LIST PANEL
+// ═══════════════════════════════
+const LIST_META = {
+  all:      { title:'Все точки',          dot:'#7d8590' },
+  splitter: { title:'Сплиттеры',          dot:'#388bfd' },
+  muff:     { title:'Муфты',              dot:'#8b7355' },
+  free:     { title:'Свободные порты',    dot:'#3fb950' },
+  off:      { title:'Отключённые',        dot:'#e09b3d' },
+  active:   { title:'Активные абоненты',  dot:'#3fb950' },
+};
+
+function getFilteredList(filter) {
+  if (filter === 'all')      return [...points];
+  if (filter === 'splitter') return points.filter(p=>p.type==='splitter');
+  if (filter === 'muff')     return points.filter(p=>p.type==='muff');
+
+  if (filter === 'off') {
+    return points.filter(p => isOffPoint(p));
+  }
+
+  if (filter === 'active') {
+    return points.filter(p => effectiveStatus(p) === 'active');
+  }
+
+  if (filter === 'free') {
+    return points.filter(p=>p.type==='splitter' && freePorts(p)>0);
+  }
+
+  return [...points];
+}
+
+function openListPanel(filter) {
+  // close sidebar if open
+  closeSidebar();
+
+  const meta    = LIST_META[filter] || LIST_META.all;
+  const list    = getFilteredList(filter);
+  document.getElementById('lp-title').textContent = meta.title;
+  document.getElementById('lp-count').textContent = list.length + ' шт.';
+
+  const body = document.getElementById('lp-body');
+  if (!list.length) {
+    body.innerHTML = `<div class="lp-empty">Нет точек в этой категории</div>`;
+  } else {
+    body.innerHTML = list.map(p=>{
+      const cfg = typeConfig(p.type);
+      let meta2 = '';
+      if (p.type === 'splitter') {
+        const free = freePorts(p);
+        const used = usedPorts(p);
+        meta2 = `Портов: ${p.portsTotal||0} · своб. ${free} · актив. ${used}`;
+      } else if (p.comment) {
+        meta2 = p.comment.length > 50 ? p.comment.slice(0,50)+'…' : p.comment;
+      }
+      const badge = p.type==='splitter'
+        ? `<div class="lp-badge" style="background:${cfg.badgeBg};color:${cfg.badgeColor}">${freePorts(p)} своб.</div>`
+        : `<div class="lp-badge" style="background:${cfg.badgeBg};color:${cfg.badgeColor}">${cfg.label}</div>`;
+      return `<div class="lp-item" onclick="selectFromList('${p.id}')">
+        <div class="lp-dot" style="background:${cfg.color}"></div>
+        <div class="lp-info">
+          <div class="lp-name">${p.name||'—'}</div>
+          ${meta2?`<div class="lp-meta">${meta2}</div>`:''}
+        </div>
+        ${badge}
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('list-panel').classList.add('open');
+}
+
+function closeListPanel() {
+  document.getElementById('list-panel').classList.remove('open');
+}
+
+function selectFromList(id) {
+  closeListPanel();
+  const p = getPoint(id);
+  if (p) map.setView([p.lat, p.lng], 17, {animate:true});
+  setTimeout(()=>openSidebar(id), 200);
+}
+
+// ═══════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════
+// ═══════════════════════════════
+// PORT MANAGEMENT IN SIDEBAR
+// ═══════════════════════════════
+const _sbShowFree = {}; // {`${pointId}-${splIdx}` : bool}
+
+function renderPortList(point, si, showFree) {
+  const spls = _getSplitters(point);
+  const spl  = spls[si];
+  if (!spl) return '';
+  let html = '';
+
+  (spl.subs||[]).forEach((s, pi) => {
+    if (s.status === 'free' && !showFree) return;
+    if (s.status === 'off_free' && !showFree) return; // also hidden with free ports
+    const sc  = s.status==='active'?'#3fb950':s.status==='off'?'#e09b3d':s.status==='off_free'?'#f85149':'#388bfd';
+    const sl  = s.status==='active'?'актив':s.status==='off'?'откл.+порт':s.status==='off_free'?'откл.':  'своб.';
+    const sk  = s.status==='active'?'status-active':s.status==='off'?'status-off':s.status==='off_free'?'status-off-free':'status-free';
+    const fc  = fiberColorInfo(s.fiberColor);
+    const fh  = fc?fc.hex:null, fn=fc?fc.name:'';
+    const ad  = (s.address||'').trim(), pe=(s.person||'').trim();
+    const ml  = ad&&pe?`${ad} / ${pe}`:ad||pe||'— свободен —';
+    const pid = point.id;
+    html += `
+    <div class="sub-item" id="port-row-${pid}-${si}-${pi}">
+      <div class="sub-dot" style="background:${sc}"></div>
+      <div class="sub-info" style="flex:1;min-width:0">
+        <div class="sub-name" style="font-size:13px;line-height:1.35">${ml}</div>
+        <div class="sub-meta" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:2px">
+          <span>Порт ${s.port}</span>
+          ${fn?`<span style="display:inline-flex;align-items:center;gap:3px;"><span style="width:8px;height:8px;border-radius:50%;background:${fh};display:inline-block;border:1px solid rgba(255,255,255,.2)"></span><span style="color:${fh};font-weight:600">${fn}</span></span>`:''}
+          ${s.phone?`<span>· ${s.phone}</span>`:''}
+          ${signalBadge(s.signal)}
+        </div>
+      </div>
+      <div class="sub-status ${sk}">${sl}</div>
+      <div style="display:flex;gap:4px;margin-left:6px;flex-shrink:0">
+        <button onclick="sbEditPort('${pid}',${si},${pi})"
+          style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:3px 7px;cursor:pointer;font-size:13px;">✏️</button>
+        <button onclick="sbDeletePort('${pid}',${si},${pi})"
+          style="background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.25);color:#f85149;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:13px;">🗑</button>
+      </div>
+    </div>`;
+  });
+
+  if (!html) {
+    html = `<div style="font-size:12px;color:var(--dim);padding:8px 0;text-align:center">
+      ${showFree ? 'Нет портов' : 'Нет активных/отключённых портов'}
+    </div>`;
+  }
+  return html;
+}
+
+function sbToggleFree(pid, si) {
+  const key = `${pid}-${si}`;
+  _sbShowFree[key] = !_sbShowFree[key];
+  const show = _sbShowFree[key];
+  const p = getPoint(pid);
+  document.getElementById(`spl-ports-${pid}-${si}`).innerHTML = renderPortList(p, si, show);
+  const btn = document.getElementById(`btn-free-${pid}-${si}`);
+  if (btn) btn.textContent = show ? 'Свободные: видны' : 'Свободные: скрыты';
+}
+
+function sbEditPort(pid, si, pi) {
+  const p   = getPoint(pid);
+  const spl = _getSplitters(p)[si];
+  if (!spl) return;
+  const s = spl.subs[pi];
+  if (!s) return;
+
+  const statusOpts = ['free','active','off','off_free'];
+  const statusLabel = {free:'Свободен',active:'Активен',off:'Откл. + порт (оранж.)',off_free:'Откл. без порта (красн.)'};
+
+  // Build an inline edit form inside the row
+  const key = `${pid}-${si}`;
+  const show = !!_sbShowFree[key];
+  const rowId = `port-row-${pid}-${si}-${pi}`;
+  const row = document.getElementById(rowId);
+  if (!row) return;
+
+  row.innerHTML = `
+    <div style="width:100%;display:flex;flex-direction:column;gap:6px;padding:4px 0;">
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--dim);width:18px">${s.port}</span>
+        <input id="ep-addr-${pi}" type="text" value="${s.address||''}" placeholder="Адрес"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;outline:none;min-width:0">
+        <select id="ep-stat-${pi}"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 6px;color:var(--text);font-size:12px;cursor:pointer">
+          ${statusOpts.map(st=>`<option value="${st}" ${s.status===st?'selected':''}>${statusLabel[st]}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;padding-left:24px">
+        <input id="ep-per-${pi}" type="text" value="${s.person||''}" placeholder="ФИО / Компания"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:12px;outline:none;min-width:0">
+        <input id="ep-ph-${pi}" type="text" value="${s.phone||''}" placeholder="тел."
+          style="width:90px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--dim);font-size:12px;outline:none">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;padding-left:24px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--dim);flex-shrink:0">📶 Сигнал:</span>
+        <input id="ep-sig-${pi}" type="number" step="0.01"
+          value="${typeof s.signal==='object'?s.signal?.value??'':s.signal??''}" placeholder="-22.00"
+          oninput="sbUpdateSignalColor(${pi})"
+          style="width:90px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+          padding:5px 8px;color:var(--text);font-size:12px;outline:none;font-family:var(--mono)">
+        <span style="font-size:11px;color:var(--dim)">dBm</span>
+        ${_sigColorPicker('ep-sigc-'+pi, typeof s.signal==='object'?s.signal?.color:'#3fb950')}
+        <span id="ep-sig-col-${pi}">${signalBadge(s.signal)}</span>
+      </div>
+      <div style="display:flex;gap:6px;padding-left:24px">
+        <button onclick="sbSavePort('${pid}',${si},${pi})"
+          style="flex:1;background:#388bfd;border:none;color:#fff;border-radius:6px;padding:6px;cursor:pointer;font-size:12px;font-weight:600;">✓ Сохранить</button>
+        <button onclick="sbCancelEdit('${pid}',${si},${pi})"
+          style="flex:1;background:var(--card);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:6px;cursor:pointer;font-size:12px;">Отмена</button>
+      </div>
+    </div>`;
+}
+
+// Signal color picker HTML snippet
+function _sigColorPicker(id, selected) {
+  const cols = [
+    {c:'#3fb950', label:'🟢'},
+    {c:'#e09b3d', label:'🟠'},
+    {c:'#f85149', label:'🔴'},
+  ];
+  return `<span id="${id}" style="display:inline-flex;gap:3px;">` +
+    cols.map(({c, label}) =>
+      `<button onclick="_sigPickCol('${id}','${c}')"
+        style="width:22px;height:22px;border-radius:50%;background:${c};cursor:pointer;
+        border:3px solid ${selected===c?'#fff':'transparent'};
+        box-shadow:${selected===c?'0 0 0 1px '+c:'none'};
+        font-size:0;transition:border .1s;" title="${c}"></button>`
+    ).join('') + `</span>`;
+}
+function _sigPickCol(wrapperId, color) {
+  const el = document.getElementById(wrapperId);
+  if (!el) return;
+  el.querySelectorAll('button').forEach(b => {
+    const bc = b.style.background;
+    b.style.border = bc === color || b.style.backgroundColor === color ? '3px solid #fff' : '3px solid transparent';
+    b.style.boxShadow = (bc === color || b.style.backgroundColor === color) ? '0 0 0 1px '+bc : 'none';
+  });
+  el.dataset.selected = color;
+}
+function _sigGetCol(wrapperId, fallback) {
+  const el = document.getElementById(wrapperId);
+  return el?.dataset?.selected || fallback || '#3fb950';
+}
+
+// ── Splitter-level signal ────────
+function sbToggleSplitterSig(pid, si) {
+  const el = document.getElementById(`spl-sig-edit-${pid}-${si}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function sbSplitterSigPreview(pid, si) {
+  const v   = document.getElementById(`spl-sig-inp-${pid}-${si}`)?.value;
+  const col = _sigGetCol(`spl-sigc-${pid}-${si}`, '#3fb950');
+  const el  = document.getElementById(`spl-sig-prev-${pid}-${si}`);
+  if (el) el.innerHTML = v !== '' ? signalBadge({value:v, color:col}) : '';
+}
+function sbSaveSplitterSig(pid, si) {
+  const p   = getPoint(pid);
+  if (!p) return;
+  const spls = _getSplitters(p);
+  const spl  = spls[si];
+  if (!spl) return;
+  const v   = document.getElementById(`spl-sig-inp-${pid}-${si}`)?.value;
+  const col = _sigGetCol(`spl-sigc-${pid}-${si}`, '#3fb950');
+  const sig = v !== '' && v !== undefined ? {value: v, color: col} : null;
+  spl.signal = sig;
+  if (p.splitters && p.splitters[si]) p.splitters[si].signal = sig;
+  save();
+  // Update badge
+  const badge = document.getElementById(`spl-sig-badge-${pid}-${si}`);
+  if (badge) badge.innerHTML = signalBadge(sig) || '<span style="color:var(--dim);font-size:11px">не задан</span>';
+  const el = document.getElementById(`spl-sig-edit-${pid}-${si}`);
+  if (el) el.style.display = 'none';
+}
+function sbCancelSplitterSig(pid, si) {
+  const el = document.getElementById(`spl-sig-edit-${pid}-${si}`);
+  if (el) el.style.display = 'none';
+}
+
+function sbUpdateSignalColor(pi) {
+  const v    = document.getElementById(`ep-sig-${pi}`)?.value;
+  const col  = _sigGetCol('ep-sigc-'+pi, '#3fb950');
+  const el   = document.getElementById(`ep-sig-col-${pi}`);
+  if (el) el.innerHTML = v !== '' ? signalBadge({value: v, color: col}) : '';
+}
+
+// Subscriber point signal editing
+function sbToggleSignalEdit(pid) {
+  const el = document.getElementById(`pt-sig-edit-${pid}`);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function ptUpdateSigBadge(pid) {
+  const v   = document.getElementById(`pt-sig-inp-${pid}`)?.value;
+  const col = _sigGetCol('pt-sigc-'+pid, '#3fb950');
+  const el  = document.getElementById(`pt-sig-preview-${pid}`);
+  if (el) el.innerHTML = v !== '' ? signalBadge({value: v, color: col}) : '';
+}
+function ptSaveSignal(pid) {
+  const p = getPoint(pid);
+  if (!p) return;
+  const v   = document.getElementById(`pt-sig-inp-${pid}`)?.value;
+  const col = _sigGetCol('pt-sigc-'+pid, '#3fb950');
+  p.signal  = v !== '' && v !== undefined ? {value: v, color: col} : null;
+  save();
+  const badge = document.getElementById(`pt-sig-badge-${pid}`);
+  if (badge) badge.innerHTML = signalBadge(p.signal) || '<span style="color:var(--dim);font-size:12px">не измерен</span>';
+  const el = document.getElementById(`pt-sig-edit-${pid}`);
+  if (el) el.style.display = 'none';
+}
+function ptCancelSignal(pid) {
+  const el = document.getElementById(`pt-sig-edit-${pid}`);
+  if (el) el.style.display = 'none';
+}
+
+function sbSavePort(pid, si, pi) {
+  const p   = getPoint(pid);
+  const spl = _getSplitters(p)[si];
+  const s   = spl.subs[pi];
+  s.address = document.getElementById(`ep-addr-${pi}`)?.value.trim() || '';
+  s.person  = document.getElementById(`ep-per-${pi}`)?.value.trim()  || '';
+  s.phone   = document.getElementById(`ep-ph-${pi}`)?.value.trim()   || '';
+  s.status  = document.getElementById(`ep-stat-${pi}`)?.value        || 'free';
+  const sigVal = document.getElementById(`ep-sig-${pi}`)?.value;
+  const sigCol = _sigGetCol('ep-sigc-'+pi, '#3fb950');
+  s.signal  = sigVal !== '' && sigVal !== undefined ? {value: sigVal, color: sigCol} : null;
+  // Write back if using new format
+  if (p.splitters && p.splitters[si]) p.splitters[si].subs[pi] = s;
+  save();
+  refreshMarker(pid);
+  // Sync linked subscriber marker if port has subscriberId
+  if (s.subscriberId) refreshMarker(s.subscriberId);
+  const key = `${pid}-${si}`;
+  document.getElementById(`spl-ports-${pid}-${si}`).innerHTML = renderPortList(p, si, !!_sbShowFree[key]);
+}
+
+function sbCancelEdit(pid, si, pi) {
+  const p   = getPoint(pid);
+  const key = `${pid}-${si}`;
+  document.getElementById(`spl-ports-${pid}-${si}`).innerHTML = renderPortList(p, si, !!_sbShowFree[key]);
+}
+
+function sbDeletePort(pid, si, pi) {
+  const p   = getPoint(pid);
+  const spl = _getSplitters(p)[si];
+  if (!spl) return;
+  spl.subs.splice(pi, 1);
+  spl.subs.forEach((s,i) => s.port = i+1);
+  spl.portsTotal = spl.subs.length;
+  if (p.splitters && p.splitters[si]) { p.splitters[si].subs = spl.subs; p.splitters[si].portsTotal = spl.subs.length; }
+  save();
+  refreshMarker(pid);
+  const key = `${pid}-${si}`;
+  document.getElementById(`spl-ports-${pid}-${si}`).innerHTML = renderPortList(p, si, !!_sbShowFree[key]);
+}
+
+function sbAddPort(pid, si) {
+  const p   = getPoint(pid);
+  const spl = _getSplitters(p)[si];
+  if (!spl) return;
+  const idx = spl.subs.length;
+  const newPort = {
+    address:'', person:'', port: idx+1, status:'free', phone:'',
+    fiberColor: FIBER_COLORS[idx % 12].id
+  };
+  spl.subs.push(newPort);
+  spl.portsTotal = spl.subs.length;
+  if (p.splitters && p.splitters[si]) { p.splitters[si].subs = spl.subs; p.splitters[si].portsTotal = spl.subs.length; }
+  save();
+  refreshMarker(pid);
+  // Show free ports to see the new one
+  _sbShowFree[`${pid}-${si}`] = true;
+  document.getElementById(`spl-ports-${pid}-${si}`).innerHTML = renderPortList(p, si, true);
+  const btn = document.getElementById(`btn-free-${pid}-${si}`);
+  if (btn) btn.textContent = 'Свободные: видны';
+}
+
+
+// ═══════════════════════════════
+// PHOTOS 2.0 — фото объекта через IndexedDB
+// ═══════════════════════════════
+let modalPhotos = [];
+
+const PHOTO_DB_NAME = 'fibermap_photo_store_v2';
+const PHOTO_DB_VERSION = 1;
+const PHOTO_STORE = 'photos';
+
+function fmEscape(v) {
+  return String(v ?? '').replace(/[&<>\"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));
+}
+
+function photoCatLabel(cat) {
+  return ({
+    avatar:'Аватар', outside:'Снаружи', inside:'Внутри', cassette:'Кассета',
+    splice:'Сварки', splitter:'Сплиттер', route:'Трасса', other:'Другое'
+  })[cat || 'other'] || 'Другое';
+}
+
+function normalizePhotos(p) {
+  if (!p.photos) p.photos = [];
+  if (!Array.isArray(p.photos)) p.photos = [];
+  p.photos = p.photos.map((ph, i) => {
+    if (typeof ph === 'string') return { id:'legacy_'+i, data:ph, thumb:ph, caption:'Фото '+(i+1), category:i===0?'avatar':'other', created:Date.now() };
+    return {
+      id: ph.id || ('photo_' + Date.now() + '_' + i),
+      thumb: ph.thumb || ph.data || '',
+      data: ph.data || undefined, // legacy support; new full photos are stored in IndexedDB
+      caption: ph.caption || '',
+      category: ph.category || (i===0 ? 'avatar' : 'other'),
+      created: ph.created || Date.now(),
+      name: ph.name || ''
+    };
+  });
+  return p.photos;
+}
+
+function openPhotoDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PHOTO_DB_NAME, PHOTO_DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSetPhoto(id, dataUrl) {
+  const db = await openPhotoDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_STORE, 'readwrite');
+    tx.objectStore(PHOTO_STORE).put(dataUrl, id);
+    tx.oncomplete = () => { db.close(); resolve(true); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function idbGetPhoto(id) {
+  if (!id) return null;
+  const db = await openPhotoDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_STORE, 'readonly');
+    const req = tx.objectStore(PHOTO_STORE).get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+    tx.oncomplete = () => db.close();
+  });
+}
+
+async function idbDeletePhoto(id) {
+  if (!id) return;
+  const db = await openPhotoDb();
+  return new Promise(resolve => {
+    const tx = db.transaction(PHOTO_STORE, 'readwrite');
+    tx.objectStore(PHOTO_STORE).delete(id);
+    tx.oncomplete = () => { db.close(); resolve(true); };
+    tx.onerror = () => { db.close(); resolve(false); };
+  });
+}
+
+function renderPhotosBlock(p) {
+  const photos = normalizePhotos(p);
+  if (!photos.length) {
+    return `<div class="subs-title">Фото объекта</div><div class="photo-empty">Фото ещё не добавлены. Нажмите «Редактировать» → «Добавить фото».</div>`;
+  }
+  return `<div class="subs-title">Фото объекта</div>
+    <div class="photo-grid">
+      ${photos.map((ph,i)=>`
+        <div class="photo-thumb ${i===0?'avatar':''}" onclick="openPhotoViewer('${p.id}',${i})" title="${fmEscape(ph.caption || photoCatLabel(ph.category))}">
+          <img src="${ph.thumb || ph.data || ''}" alt="${fmEscape(ph.caption||'Фото')}">
+          <div class="photo-label">${i===0?'⭐ ':''}${fmEscape(ph.caption || photoCatLabel(ph.category))}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderPhotoEditor() {
+  const box = document.getElementById('photos-editor');
+  if (!box) return;
+  const photos = modalPhotos || [];
+  const catOptions = ['outside','inside','cassette','splice','splitter','route','other'];
+  box.innerHTML = `
+    <input id="f-photos-file" type="file" accept="image/*" multiple style="display:none" onchange="handlePhotoFiles(this.files);this.value=''">
+    <button type="button" class="btn-add-sub" onclick="document.getElementById('f-photos-file').click()">📷 Добавить фото</button>
+    <div class="form-hint">Первое фото — аватар объекта. Полные фото хранятся в IndexedDB, поэтому можно хранить намного больше снимков, чем в localStorage.</div>
+    ${photos.length ? `<div class="photo-edit-list" style="margin-top:10px;">
+      ${photos.map((ph,i)=>`
+        <div class="photo-edit-item">
+          <img src="${ph.thumb || ph.data || ''}" alt="Фото" onclick="openModalPhotoPreview(${i})" style="cursor:pointer">
+          <div class="photo-edit-fields">
+            <input class="form-input" style="padding:7px 9px;font-size:13px" placeholder="Подпись: снаружи, внутри, кассета, сварки..."
+              value="${fmEscape(ph.caption||'')}" oninput="modalPhotos[${i}].caption=this.value">
+            <select class="form-select" style="margin-top:6px;padding:7px 9px;font-size:13px" onchange="modalPhotos[${i}].category=this.value">
+              ${catOptions.map(c=>`<option value="${c}" ${((ph.category||'other')===c)?'selected':''}>${photoCatLabel(c)}</option>`).join('')}
+            </select>
+            <div class="photo-edit-actions">
+              ${i>0?`<button type="button" class="photo-mini-btn" onclick="setAvatarPhoto(${i})">⭐ Сделать аватаром</button>`:`<button type="button" class="photo-mini-btn">⭐ Аватар</button>`}
+              ${i>0?`<button type="button" class="photo-mini-btn" onclick="movePhoto(${i},-1)">↑</button>`:''}
+              ${i<photos.length-1?`<button type="button" class="photo-mini-btn" onclick="movePhoto(${i},1)">↓</button>`:''}
+              <button type="button" class="photo-mini-btn danger" onclick="removePhoto(${i})">Удалить</button>
+            </div>
+          </div>
+        </div>`).join('')}
+    </div>` : `<div class="photo-empty" style="margin-top:10px;">Пока фото нет</div>`}`;
+}
+
+function setAvatarPhoto(i) {
+  if (i <= 0 || !modalPhotos[i]) return;
+  const [ph] = modalPhotos.splice(i, 1);
+  ph.category = 'avatar';
+  modalPhotos.unshift(ph);
+  renderPhotoEditor();
+}
+function movePhoto(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= modalPhotos.length) return;
+  [modalPhotos[i], modalPhotos[j]] = [modalPhotos[j], modalPhotos[i]];
+  renderPhotoEditor();
+}
+function removePhoto(i) {
+  modalPhotos.splice(i, 1);
+  renderPhotoEditor();
+}
+
+function compressImageFile(file, maxSize=2000, quality=0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => compressDataUrl(e.target.result, maxSize, quality).then(resolve).catch(reject);
+    reader.readAsDataURL(file);
+  });
+}
+
+function compressDataUrl(dataUrl, maxSize=2000, quality=0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = reject;
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      const k = Math.min(1, maxSize / Math.max(w, h));
+      w = Math.max(1, Math.round(w * k));
+      h = Math.max(1, Math.round(h * k));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
+}
+
+async function handlePhotoFiles(files) {
+  const arr = Array.from(files || []);
+  if (!arr.length) return;
+  const box = document.getElementById('photos-editor');
+  const oldHtml = box ? box.innerHTML : '';
+  if (box) box.innerHTML = `<div class="photo-empty">⏳ Обработка фото: 0/${arr.length}</div>`;
+  let done = 0;
+  for (const file of arr) {
+    if (!file.type.startsWith('image/')) continue;
+    const full = await compressImageFile(file, 2000, 0.82);
+    const thumb = await compressDataUrl(full, 420, 0.72);
+    const id = 'photo_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    await idbSetPhoto(id, full);
+    modalPhotos.push({
+      id,
+      thumb,
+      caption: file.name.replace(/\.[^.]+$/, '').slice(0, 50),
+      category: modalPhotos.length === 0 ? 'avatar' : 'other',
+      created: Date.now(),
+      name: file.name
+    });
+    done++;
+    if (box) box.innerHTML = `<div class="photo-empty">⏳ Обработка фото: ${done}/${arr.length}</div>`;
+  }
+  renderPhotoEditor();
+}
+
+async function openModalPhotoPreview(index) {
+  const ph = modalPhotos[index];
+  if (!ph) return;
+  let data = ph.data || await idbGetPhoto(ph.id) || ph.thumb;
+  document.getElementById('photo-viewer-img').src = data;
+  document.getElementById('photo-viewer-title').textContent = ph.caption || photoCatLabel(ph.category);
+  document.getElementById('photo-viewer').classList.add('open');
+}
+
+async function openPhotoViewer(pointId, index) {
+  const p = getPoint(pointId);
+  if (!p || !p.photos || !p.photos[index]) return;
+  const ph = p.photos[index];
+  let data = ph.data || await idbGetPhoto(ph.id) || ph.thumb;
+  if (!data) return alert('Фото не найдено. Возможно, проект импортирован без фото.');
+  document.getElementById('photo-viewer-img').src = data;
+  document.getElementById('photo-viewer-title').textContent = ph.caption || (index===0 ? 'Аватар' : photoCatLabel(ph.category));
+  document.getElementById('photo-viewer').classList.add('open');
+}
+
+function closePhotoViewer(e) {
+  if (e && e.target && e.target.id !== 'photo-viewer') return;
+  const v = document.getElementById('photo-viewer');
+  v.classList.remove('open');
+  document.getElementById('photo-viewer-img').src = '';
+}
+
+function openSidebar(id) {
+  closeListPanel();
+  selectedId = id;
+  const p = getPoint(id);
+  if (!p) return;
+  const cfg = typeConfig(p.type);
+  const sb = document.getElementById('sidebar');
+  document.getElementById('sb-badge').textContent = cfg.label;
+  document.getElementById('sb-badge').style.cssText = `background:${cfg.badgeBg};color:${cfg.badgeColor};`;
+  document.getElementById('sb-title').textContent = p.name || '—';
+
+  let html = '';
+
+  html += renderPhotosBlock(p);
+
+  if (p.type === 'muff') {
+    // ── МУФТА ──
+    html += `<div class="field-grid">
+      <div class="field-item"><div class="field-label">Тип муфты</div><div class="field-value">${p.muffType==='repair'?'Ремонтная':'Транзит'}</div></div>
+      <div class="field-item"><div class="field-label">GPS</div><div class="field-value" style="font-family:var(--mono);font-size:11px">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div></div>
+    </div>`;
+    if (p.comment) html += `<div class="subs-title">Комментарий</div><div class="comment-box"><div class="comment-text">${p.comment}</div></div>`;
+
+  } else if (p.type === 'splitter') {
+    // ── БОКС СО СПЛИТТЕРАМИ ──
+    const spls = _getSplitters(p);
+    const totalFree  = freePorts(p);
+    const totalPorts = spls.reduce((t,s)=>t+(s.portsTotal||0),0);
+
+    html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="background:rgba(56,139,253,.1);border:1px solid rgba(56,139,253,.25);border-radius:8px;padding:8px 14px;text-align:center;flex:1">
+        <div style="font-family:var(--mono);font-size:24px;color:#388bfd;font-weight:700">${totalFree}</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px">СВОБОДНО</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;text-align:center;flex:1">
+        <div style="font-family:var(--mono);font-size:24px;font-weight:700">${totalPorts}</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px">ПОРТОВ</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;text-align:center;flex:1">
+        <div style="font-family:var(--mono);font-size:24px;font-weight:700">${spls.length}</div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px">СПЛ. В БОКСЕ</div>
+      </div>
+    </div>`;
+
+    spls.forEach((spl, si) => {
+      const isT = spl.splitterType === 'trunk';
+      const splColor = isT ? '#7c3aed' : '#388bfd';
+      const splLabel = isT ? '🔷 Магистральный' : '🔵 Абонентский';
+      const total  = spl.portsTotal || 0;
+      const actC    = (spl.subs||[]).filter(s=>s.status==='active').length;
+      const offC    = (spl.subs||[]).filter(s=>s.status==='off').length;
+      const offFreeC= (spl.subs||[]).filter(s=>s.status==='off_free').length;
+      const freeC   = total - actC - offC; // off_free counts as free
+      const pA = total>0?Math.round(actC/total*100):0;
+      const pO = total>0?Math.round(offC/total*100):0;
+      const pR = total>0?Math.round(offFreeC/total*100):0;
+      const pF = Math.max(0, 100-pA-pO-pR);
+
+      html += `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;" id="spl-block-${id}-${si}">
+        <div style="background:rgba(255,255,255,.03);padding:10px 14px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:13px;font-weight:700;color:${splColor}">${splLabel} 1×${total}</span>
+            <span style="font-family:var(--mono);font-size:11px;color:#3fb950;font-weight:700">${freeC} своб.</span>
+            ${offC?`<span style="font-family:var(--mono);font-size:11px;color:#e09b3d;font-weight:700">${offC} откл.+порт</span>`:''}
+            ${offFreeC?`<span style="font-family:var(--mono);font-size:11px;color:#f85149;font-weight:700">${offFreeC} откл.</span>`:''}
+            <div style="margin-left:auto;display:flex;gap:6px">
+              <button onclick="sbToggleFree('${id}',${si})"
+                id="btn-free-${id}-${si}"
+                style="background:rgba(56,139,253,.1);border:1px solid rgba(56,139,253,.3);color:#cae8ff;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:11px;font-family:var(--sans)">
+                Свободные: скрыты
+              </button>
+              <button onclick="sbAddPort('${id}',${si})"
+                style="background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);color:#aff5b4;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:11px;font-family:var(--sans)">
+                + Порт
+              </button>
+            </div>
+          </div>
+          <!-- Signal level row for this splitter -->
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:var(--dim)">📶 Сигнал:</span>
+            <span id="spl-sig-badge-${id}-${si}">${signalBadge(spl.signal)||'<span style="color:var(--dim);font-size:11px">не задан</span>'}</span>
+            <button onclick="sbToggleSplitterSig('${id}',${si})"
+              style="background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 8px;cursor:pointer;font-size:11px;">✏️</button>
+          </div>
+          <div id="spl-sig-edit-${id}-${si}" style="display:none;margin-top:8px;">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <input id="spl-sig-inp-${id}-${si}" type="number" step="0.01"
+                value="${typeof spl.signal==='object'?spl.signal?.value??'':spl.signal??''}"
+                placeholder="-22.00" oninput="sbSplitterSigPreview('${id}',${si})"
+                style="width:100px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+                padding:5px 8px;color:var(--text);font-size:13px;outline:none;font-family:var(--mono)">
+              <span style="color:var(--dim);font-size:12px">dBm</span>
+              ${_sigColorPicker('spl-sigc-'+id+'-'+si, typeof spl.signal==='object'?spl.signal?.color:'#3fb950')}
+              <span id="spl-sig-prev-${id}-${si}">${signalBadge(spl.signal)}</span>
+              <button onclick="sbSaveSplitterSig('${id}',${si})"
+                style="background:#388bfd;border:none;color:#fff;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;">✓</button>
+              <button onclick="sbCancelSplitterSig('${id}',${si})"
+                style="background:var(--card);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:5px 8px;cursor:pointer;font-size:12px;">✕</button>
+            </div>
+          </div>
+        </div>
+        <div style="padding:10px 14px;">
+          <div class="port-bar" style="margin-bottom:10px;">
+            <div style="display:flex;height:100%;width:100%">
+              <div style="width:${pA}%;background:#3fb950;border-radius:4px 0 0 4px"></div>
+              <div style="width:${pO}%;background:#e09b3d"></div>
+              <div style="width:${pR}%;background:#f85149"></div>
+              <div style="width:${pF}%;background:rgba(56,139,253,.25);border-radius:0 4px 4px 0;border:1px solid rgba(56,139,253,.3)"></div>
+            </div>
+          </div>
+          <div class="sub-list" id="spl-ports-${id}-${si}">
+            ${renderPortList(p, si, false)}
+          </div>
+        </div>
+      </div>`;
+    });
+
+    if (p.comment) html += `<div class="subs-title">Комментарий</div><div class="comment-box"><div class="comment-text">${p.comment}</div></div>`;
+
+  } else {
+    // off / active / other
+    const cfg2 = typeConfig(p.type);
+    html += `<div class="field-grid">
+      <div class="field-item"><div class="field-label">Тип</div><div class="field-value">${cfg2.label}</div></div>
+      <div class="field-item"><div class="field-label">GPS</div><div class="field-value" style="font-family:var(--mono);font-size:11px">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div></div>
+    </div>`;
+
+    // Signal level block for subscriber points
+    if (p.type === 'off' || p.type === 'active') {
+      const sigVal = typeof p.signal==='object' ? p.signal?.value??'' : p.signal??'';
+      const sigCol = typeof p.signal==='object' ? p.signal?.color||'#3fb950' : '#3fb950';
+      html += `<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span style="font-size:13px;font-weight:600">📶 Уровень сигнала</span>
+          <span id="pt-sig-badge-${id}">${signalBadge(p.signal) || '<span style="color:var(--dim);font-size:12px">не измерен</span>'}</span>
+          <button onclick="sbToggleSignalEdit('${id}')"
+            style="margin-left:auto;background:rgba(255,255,255,.06);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:3px 9px;cursor:pointer;font-size:12px;">✏️</button>
+        </div>
+        <div id="pt-sig-edit-${id}" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input id="pt-sig-inp-${id}" type="number" step="0.01"
+              value="${sigVal}" placeholder="-22.00"
+              oninput="ptUpdateSigBadge('${id}')"
+              style="width:100px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+              padding:6px 10px;color:var(--text);font-size:14px;outline:none;font-family:var(--mono)">
+            <span style="color:var(--dim);font-size:13px">dBm</span>
+            ${_sigColorPicker('pt-sigc-'+id, sigCol)}
+            <span id="pt-sig-preview-${id}">${signalBadge(p.signal)}</span>
+            <button onclick="ptSaveSignal('${id}')"
+              style="background:#388bfd;border:none;color:#fff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600;">✓</button>
+            <button onclick="ptCancelSignal('${id}')"
+              style="background:var(--card);border:1px solid var(--border);color:var(--dim);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px;">✕</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    if (p.comment) html += `<div class="subs-title">Комментарий</div><div class="comment-box"><div class="comment-text">${p.comment}</div></div>`;
+  }
+
+  // Route info
+  html += routeHtmlForPoint(id);
+
+  // Route button — all point types can start a route
+  html += `<button onclick="startPickTarget('${id}')"
+    style="width:100%;padding:10px;border-radius:8px;border:1px dashed rgba(63,185,80,.4);
+    background:rgba(63,185,80,.07);color:#3fb950;cursor:pointer;font-size:13px;margin-bottom:10px;font-family:var(--sans)">
+    📡 Нарисовать маршрут от этой точки
+  </button>`;
+
+  // Actions
+  html += `<div class="action-row">
+    <button class="btn btn-edit" onclick="openEditModal('${id}')">✏️ Изменить</button>
+    <button class="btn btn-del" onclick="deletePoint('${id}')">🗑 Удалить</button>
+  </div>`;
+
+  showRoutesForPoint(id);
+  document.getElementById('sidebar-body').innerHTML = html;
+  sb.classList.add('open');
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  selectedId = null;
+  hideAllRouteLines();
+}
+
+// ═══════════════════════════════
+// MODAL
+// ═══════════════════════════════
+let modalSubs = [];
+let modalType = 'splitter';
+let modalSplitters = []; // for box: [{splitterType, portsTotal, subs}]
+let modalMuffType = 'transit';
+// modalPhotos объявлен выше в блоке PHOTOS
+
+function _newSplitter(splitterType, portsTotal) {
+  return {
+    splitterType: splitterType||'subscriber',
+    portsTotal: portsTotal||8,
+    subs: Array.from({length: portsTotal||8}, (_,i)=>({
+      address:'', person:'', port:i+1, status:'free', phone:'',
+      fiberColor: null
+    }))
+  };
+}
+
+function openAddModal() {
+  editingId = null;
+  modalType = 'splitter';
+  modalMuffType = 'transit';
+  modalSplitters = [_newSplitter('subscriber', 8)];
+  modalSubs = modalSplitters[0].subs;
+  modalPhotos = [];
+  document.getElementById('modal-title').textContent = 'Добавить точку';
+  renderModalBody();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function openEditModal(id) {
+  editingId = id;
+  const p = getPoint(id);
+  if (!p) return;
+  modalPhotos = JSON.parse(JSON.stringify(normalizePhotos(p)));
+  modalType = p.type;
+  modalMuffType = p.muffType || 'transit';
+  if (p.type === 'splitter') {
+    const spls = _getSplitters(p);
+    modalSplitters = spls.map((spl,si) => ({
+      splitterType: spl.splitterType || 'subscriber',
+      portsTotal:   spl.portsTotal || 0,
+      subs: (spl.subs||[]).map((s,i) => ({
+        port:       s.port || i+1,
+        status:     s.status || 'free',
+        phone:      s.phone || '',
+        fiberColor: s.fiberColor || null,
+        address:    s.address || '',
+        person:     s.person || s.name || '',
+      }))
+    }));
+  }
+  document.getElementById('modal-title').textContent = 'Изменить точку';
+  renderModalBody(p);
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function renderModalBody(p) {
+  const isEdit = !!p;
+  let html = '';
+
+  // TYPE SELECTOR (add only)
+  if (!isEdit) {
+    const types = [
+      { t:'splitter', icon:'🔵', name:'Бокс',      desc:'Сплиттеры (1 или несколько)', sel:'selected-blue'   },
+      { t:'muff',     icon:'🟤', name:'Муфта',      desc:'Транзит / ремонтная',         sel:'selected-brown'  },
+      { t:'off',      icon:'🟠', name:'Отключён',   desc:'Порт свободен',               sel:'selected-orange' },
+      { t:'active',   icon:'🟢', name:'Абонент',    desc:'Активный',                    sel:'selected-green'  },
+      { t:'other',    icon:'🩷', name:'Прочее',     desc:'Метка / заметка',             sel:'selected-pink'   },
+    ];
+    html += `<div class="form-group">
+      <label class="form-label">Тип точки</label>
+      <div class="type-selector" style="grid-template-columns:repeat(3,1fr)">
+        ${types.map(tp=>`
+        <div class="type-opt ${modalType===tp.t?tp.sel:''}" onclick="selectType('${tp.t}',this)">
+          <div class="type-icon">${tp.icon}</div>
+          <div class="type-name">${tp.name}</div>
+          <div class="type-desc">${tp.desc}</div>
+        </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // NAME
+  const namePH = modalType==='splitter'?'ул. Ленина 12 / Бокс №1'
+               : modalType==='muff'    ?'ул. Ленина 12 / Муфта МТОК'
+               : 'ул. Ленина 12, кв.5 / Иванов А.';
+  html += `<div class="form-group">
+    <label class="form-label">Адрес / ФИО (Компания)</label>
+    <input class="form-input" id="f-name" type="text" placeholder="${namePH}" value="${p?p.name||'':''}">
+  </div>`;
+
+  // МУФТА
+  if (modalType === 'muff') {
+    html += `<div class="form-group">
+      <label class="form-label">Тип муфты</label>
+      <select class="form-select" id="f-muff-type">
+        <option value="transit" ${modalMuffType==='transit'?'selected':''}>Транзит</option>
+        <option value="repair"  ${modalMuffType==='repair' ?'selected':''}>Ремонтная</option>
+      </select>
+    </div>`;
+  }
+
+  // БОКС СО СПЛИТТЕРАМИ
+  if (modalType === 'splitter') {
+    html += `<div class="form-group">
+      <label class="form-label">Сплиттеры в боксе</label>
+      <div id="splitters-editor"></div>
+      <button class="btn-add-sub" style="margin-top:8px" onclick="addSplitterToBox()">+ Добавить сплиттер в бокс</button>
+    </div>`;
+  }
+
+  // PHOTOS
+  html += `<div class="form-group">
+    <label class="form-label">Фото объекта</label>
+    <div id="photos-editor"></div>
+  </div>`;
+
+  // COMMENT
+  html += `<div class="form-group">
+    <label class="form-label">Комментарий</label>
+    <textarea class="form-textarea" id="f-comment" placeholder="Расположение, особенности, заметки...">${p?p.comment||'':''}</textarea>
+  </div>`;
+
+  if (!isEdit && !pendingLatLng) {
+    html += `<div class="form-group"><div class="form-hint" style="color:#e09b3d">⚠ Нажмите на карту чтобы выбрать место</div></div>`;
+  }
+
+  document.getElementById('modal-body').innerHTML = html;
+
+  if (modalType === 'splitter') renderSplittersEditor();
+  renderPhotoEditor();
+}
+
+function selectType(type, el) {
+  modalType = type;
+  document.querySelectorAll('.type-opt').forEach(o=>o.className='type-opt');
+  const cls = {splitter:'selected-blue',muff:'selected-brown',off:'selected-orange',active:'selected-green',other:'selected-pink'};
+  el.classList.add(cls[type]||'');
+  if (type === 'splitter' && !modalSplitters.length) modalSplitters = [_newSplitter('subscriber',8)];
+  const p = editingId ? getPoint(editingId) : null;
+  renderModalBody(p);
+}
+
+function renderSplittersEditor() {
+  const el = document.getElementById('splitters-editor');
+  if (!el) return;
+  el.innerHTML = modalSplitters.map((spl, si) => `
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px;">
+      <!-- Заголовок сплиттера -->
+      <div style="background:rgba(255,255,255,.03);padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--dim)">Сплиттер ${si+1}</span>
+        <select onchange="modalSplitters[${si}].splitterType=this.value;renderSplittersEditor()"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer;">
+          <option value="subscriber" ${spl.splitterType==='subscriber'?'selected':''}>🔵 Абонентский</option>
+          <option value="trunk"      ${spl.splitterType==='trunk'     ?'selected':''}>🔷 Магистральный</option>
+        </select>
+        <select onchange="changeSplitterPorts(${si},this.value)"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;cursor:pointer;">
+          ${[2,4,8,16,32].map(n=>`<option value="${n}" ${spl.portsTotal===n?'selected':''}>${n} портов (1×${n})</option>`).join('')}
+        </select>
+        ${modalSplitters.length>1?`<button onclick="removeSplitter(${si})"
+          style="margin-left:auto;background:none;border:1px solid rgba(248,81,73,.3);border-radius:6px;color:var(--red);padding:3px 8px;cursor:pointer;font-size:12px;">✕ Удалить</button>`:''}
+      </div>
+      <!-- Порты сплиттера -->
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:4px;" id="subs-editor-${si}"></div>
+      <div style="padding:0 10px 10px;">
+        <button class="btn-add-sub" onclick="addSubToSplitter(${si})">+ Добавить порт</button>
+      </div>
+    </div>
+  `).join('');
+
+  // Render ports for each splitter
+  modalSplitters.forEach((spl, si) => renderSubsForSplitter(si));
+}
+
+function renderSubsForSplitter(si) {
+  const el = document.getElementById(`subs-editor-${si}`);
+  if (!el) return;
+  const spl = modalSplitters[si];
+  const statusOpts = ['free','active','off'];
+  const statusLabel = {free:'своб.',active:'актив.',off:'откл.'};
+
+  el.innerHTML = (spl.subs||[]).map((s, pi) => {
+    const fc = fiberColorInfo(s.fiberColor);
+    const fcHex = fc ? fc.hex : null;
+    const fcName = fc ? fc.name : '';
+    return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;background:var(--bg);">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--dim);width:18px;flex-shrink:0">${s.port}</span>
+        ${fcHex ? `<div style="width:12px;height:12px;border-radius:50%;background:${fcHex};border:2px solid rgba(255,255,255,.3);flex-shrink:0"></div>` : `<div style="width:12px;height:12px;border-radius:50%;background:var(--border);border:2px dashed var(--dim);flex-shrink:0" title="цвет не задан"></div>`}
+        <input type="text" placeholder="Адрес (ул. Ленина 12, кв.5)" value="${s.address||''}"
+          oninput="modalSplitters[${si}].subs[${pi}].address=this.value"
+          style="flex:1;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:13px;outline:none;padding-bottom:2px;min-width:0">
+        <select onchange="modalSplitters[${si}].subs[${pi}].status=this.value;renderSubsForSplitter(${si})"
+          style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;font-family:var(--mono);cursor:pointer;flex-shrink:0">
+          ${statusOpts.map(st=>`<option value="${st}" ${s.status===st?'selected':''}>${statusLabel[st]}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;padding-left:26px">
+        <input type="text" placeholder="ФИО / Компания" value="${s.person||''}"
+          oninput="modalSplitters[${si}].subs[${pi}].person=this.value"
+          style="flex:1;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:13px;outline:none;padding-bottom:2px;min-width:0">
+        <input type="text" placeholder="тел." value="${s.phone||''}"
+          oninput="modalSplitters[${si}].subs[${pi}].phone=this.value"
+          style="width:90px;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--dim);font-family:var(--mono);font-size:11px;outline:none;padding-bottom:2px">
+      </div>
+      <div style="display:flex;gap:5px;align-items:center;padding-left:26px">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--dim);flex-shrink:0">Волокно:</span>
+        <div style="display:flex;gap:3px;flex-wrap:wrap">
+          <div onclick="modalSplitters[${si}].subs[${pi}].fiberColor=null;renderSubsForSplitter(${si})"
+            title="Без цвета" style="width:16px;height:16px;border-radius:50%;background:var(--border);cursor:pointer;
+            border:2px solid ${!s.fiberColor?'#fff':'rgba(255,255,255,.1)'};flex-shrink:0;font-size:9px;display:flex;align-items:center;justify-content:center;color:var(--dim)">✕</div>
+          ${FIBER_COLORS.map(c=>`<div onclick="modalSplitters[${si}].subs[${pi}].fiberColor='${c.id}';renderSubsForSplitter(${si})"
+            title="${c.name}" style="width:16px;height:16px;border-radius:50%;background:${c.hex};cursor:pointer;
+            border:2px solid ${s.fiberColor===c.id?'#fff':'rgba(255,255,255,.1)'};
+            box-shadow:${s.fiberColor===c.id?'0 0 0 2px '+c.hex:'none'};flex-shrink:0"></div>`).join('')}
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:${fcHex||'var(--dim)'};font-weight:600">${fcName||'не задан'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function changeSplitterPorts(si, count) {
+  const n = parseInt(count);
+  const spl = modalSplitters[si];
+  while (spl.subs.length < n) {
+    const idx = spl.subs.length;
+    spl.subs.push({address:'',person:'',port:idx+1,status:'free',phone:'',fiberColor:FIBER_COLORS[idx%12].id});
+  }
+  if (spl.subs.length > n) spl.subs = spl.subs.slice(0,n);
+  spl.subs.forEach((s,i)=>s.port=i+1);
+  spl.portsTotal = n;
+  renderSubsForSplitter(si);
+}
+
+function addSplitterToBox() {
+  modalSplitters.push(_newSplitter('subscriber', 8));
+  renderSplittersEditor();
+}
+
+function removeSplitter(si) {
+  if (modalSplitters.length <= 1) return;
+  modalSplitters.splice(si, 1);
+  renderSplittersEditor();
+}
+
+function addSubToSplitter(si) {
+  const spl = modalSplitters[si];
+  const idx = spl.subs.length;
+  spl.subs.push({address:'',person:'',port:idx+1,status:'free',phone:'',fiberColor:FIBER_COLORS[idx%12].id});
+  spl.portsTotal = spl.subs.length;
+  renderSubsForSplitter(si);
+}
+
+function savePoint() {
+  const name    = document.getElementById('f-name')?.value.trim() || '';
+  const comment = document.getElementById('f-comment')?.value.trim() || '';
+  const muffType = document.getElementById('f-muff-type')?.value || 'transit';
+
+  if (editingId) {
+    const p = getPoint(editingId);
+    if (!p) return;
+    p.name = name; p.comment = comment;
+    p.photos = JSON.parse(JSON.stringify(modalPhotos || []));
+    if (p.type === 'muff') p.muffType = muffType;
+    if (p.type === 'splitter') {
+      p.splitters = JSON.parse(JSON.stringify(modalSplitters));
+      p.portsTotal = undefined; p.subs = undefined; // clear legacy fields
+    }
+    save(); refreshMarker(editingId); renderStats(); openSidebar(editingId);
+  } else {
+    const latlng = pendingLatLng || map.getCenter();
+    const id = 'pt_' + Date.now();
+    const newPt = { id, type:modalType, lat:latlng.lat, lng:latlng.lng, name, comment, photos: JSON.parse(JSON.stringify(modalPhotos || [])) };
+    if (modalType === 'muff') {
+      newPt.muffType = muffType;
+    } else if (modalType === 'splitter') {
+      newPt.splitters = JSON.parse(JSON.stringify(modalSplitters));
+    }
+    points.push(newPt);
+    save(); refreshMarker(id); renderStats(); pendingLatLng = null; openSidebar(id);
+  }
+  closeModal();
+}
+
+function deletePoint(id) {
+  if (!confirm('Удалить эту точку?')) return;
+  if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+  points = points.filter(p=>p.id!==id);
+  save();
+  renderStats();
+  closeSidebar();
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  pendingLatLng = null;
+}
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+}
+
+// ═══════════════════════════════
+// FILTERS
+// ═══════════════════════════════
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b=>{
+    b.classList.remove('on');
+  });
+  btn.classList.add('on');
+  renderMarkers();
+}
+
+// ═══════════════════════════════
+// LOCATE — кнопка + маркер позиции
+// ═══════════════════════════════
+let myLocationMarker = null;
+
+function showLocToast(msg) {
+  let t = document.getElementById('loc-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'loc-toast';
+    t.style.cssText = `
+      position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+      background:#1c2128;border:1px solid #e09b3d;color:#ffddb3;
+      border-radius:10px;padding:10px 16px;font-size:13px;z-index:800;
+      max-width:300px;text-align:center;line-height:1.5;
+      box-shadow:0 4px 16px rgba(0,0,0,.5);
+    `;
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.display = 'block';
+  t.style.opacity = '1';
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.style.display='none',400); }, 5000);
+}
+
+function goToMyLocation() {
+  const btn = document.getElementById('my-loc-btn');
+  btn.classList.add('locating');
+  btn.textContent = '⏳';
+
+  if (!navigator.geolocation) {
+    alert('Геолокация не поддерживается браузером');
+    btn.classList.remove('locating');
+    btn.textContent = '🟢';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = pos.coords.accuracy;
+
+      // Перемещаем карту
+      map.setView([lat, lng], 17, {animate: true});
+
+      // Убираем старый маркер
+      if (myLocationMarker) map.removeLayer(myLocationMarker);
+
+      // Создаём пульсирующий зелёный маркер
+      const icon = L.divIcon({
+        html: `<div style="
+          position:relative;width:20px;height:20px;
+          display:flex;align-items:center;justify-content:center">
+          <div style="
+            position:absolute;width:36px;height:36px;border-radius:50%;
+            background:rgba(63,185,80,.25);border:1.5px solid rgba(63,185,80,.5);
+            top:50%;left:50%;transform:translate(-50%,-50%);
+            animation:myLocPulse 1.8s ease-in-out infinite"></div>
+          <div style="
+            width:16px;height:16px;border-radius:50%;
+            background:#3fb950;border:3px solid #fff;
+            box-shadow:0 2px 8px rgba(0,0,0,.5);
+            position:relative;z-index:1"></div>
+        </div>`,
+        className: '',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+
+      myLocationMarker = L.marker([lat, lng], {icon, zIndexOffset: 1000});
+      myLocationMarker.addTo(map);
+      myLocationMarker.bindPopup(`
+        <div style="font-family:monospace;font-size:12px;line-height:1.6;color:#222">
+          <b style="color:#3fb950">📍 Вы здесь</b><br>
+          ${lat.toFixed(6)}, ${lng.toFixed(6)}<br>
+          Точность: ±${Math.round(acc)}м
+        </div>`, {closeButton:false}
+      ).openPopup();
+
+      btn.classList.remove('locating');
+      btn.textContent = '🟢';
+    },
+    err => {
+      btn.classList.remove('locating');
+      btn.textContent = '🟢';
+      if (err.code === 1) {
+        // Permission denied — likely iframe restriction
+        showLocToast('⚠️ Откройте файл напрямую в браузере телефона — геолокация не работает в предпросмотре');
+      } else if (err.code === 2) {
+        showLocToast('📡 Не удалось определить местоположение — проверьте GPS');
+      } else {
+        showLocToast('⏱ Таймаут — попробуйте ещё раз на улице');
+      }
+    },
+    {enableHighAccuracy: true, timeout: 10000}
+  );
+}
+
+// ═══════════════════════════════
+// INIT
+// ═══════════════════════════════
+
+document.getElementById('toggle-sidebar-btn').addEventListener('click', function() {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+});
+
+loadProjects();
+renderProjectsList();
+
+// Mark saved layer button as active after DOM ready
+setTimeout(()=>{
+  document.querySelectorAll('.layer-btn').forEach(b=>{
+    b.classList.toggle('active-layer', b.dataset.layer === currentLayerKey);
+  });
+}, 0);
+
+// Close button — attach via JS to avoid any inline handler issues
+document.getElementById('sidebar-close-btn').addEventListener('click', function(e) {
+  e.stopPropagation();
+  closeSidebar();
+});
+document.getElementById('lp-close-btn').addEventListener('click', function(e) {
+  e.stopPropagation();
+  closeListPanel();
+});
+
+// Swipe list panel down to close
+let lpTouchY = 0;
+document.getElementById('list-panel').addEventListener('touchstart', e=>{lpTouchY=e.touches[0].clientY;},{passive:true});
+document.getElementById('list-panel').addEventListener('touchend', e=>{
+  if(e.changedTouches[0].clientY - lpTouchY > 80) closeListPanel();
+},{passive:true});
+
+// Hide tap hint after 4s
+setTimeout(()=>{
+  const h=document.getElementById('tap-hint');
+  h.style.opacity='0';
+  setTimeout(()=>h.style.display='none',300);
+},4000);
+
+// Swipe down to close sidebar on mobile
+let touchStartY = 0;
+document.getElementById('sidebar').addEventListener('touchstart', e=>{touchStartY=e.touches[0].clientY;},{passive:true});
+document.getElementById('sidebar').addEventListener('touchend', e=>{
+  const dy=e.changedTouches[0].clientY - touchStartY;
+  if(dy>80) closeSidebar();
+},{passive:true});
+// Функция экспорта данных в файл вместе с фото из IndexedDB
+async function exportData() {
+  saveProjects();
+  const raw = localStorage.getItem(PROJ_KEY);
+  if (!raw || raw === '[]') {
+    alert('Нет данных для экспорта.');
+    return;
+  }
+
+  const projectsData = JSON.parse(raw);
+  const pack = { app:'FiberMap', version:2, exportedAt:new Date().toISOString(), projects:projectsData, photos:{} };
+  const ids = new Set();
+  projectsData.forEach(pr => (pr.points||[]).forEach(pt => (pt.photos||[]).forEach(ph => {
+    if (ph && ph.id) ids.add(ph.id);
+  })));
+
+  for (const id of ids) {
+    const data = await idbGetPhoto(id);
+    if (data) pack.photos[id] = data;
+  }
+
+  const blob = new Blob([JSON.stringify(pack)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fibermap_2_export_${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Функция импорта данных из файла, поддерживает старый формат и новый формат с фото
+async function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const imported = JSON.parse(e.target.result);
+      const importedProjects = Array.isArray(imported) ? imported : imported.projects;
+      const importedPhotos = Array.isArray(imported) ? {} : (imported.photos || {});
+      if (!Array.isArray(importedProjects)) throw new Error('Некорректный формат данных');
+
+      if (confirm('Внимание: импорт полностью перезапишет существующие проекты. Продолжить?')) {
+        for (const [id, dataUrl] of Object.entries(importedPhotos)) {
+          await idbSetPhoto(id, dataUrl);
+        }
+        localStorage.setItem(PROJ_KEY, JSON.stringify(importedProjects));
+        alert('Данные и фото успешно импортированы!');
+        location.reload();
+      }
+    } catch (err) {
+      alert('Ошибка при чтении файла. Убедитесь, что это корректный JSON-файл FiberMap.');
+    }
+  };
+  reader.readAsText(file);
+}
+</script>
+</body>
+</html>
