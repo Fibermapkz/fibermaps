@@ -1122,14 +1122,12 @@ function renderMarkers() {
   Object.values(markers).forEach(m=>map.removeLayer(m));
   markers = {};
   points.forEach(p => {
-    const linkedStatus = getLinkedPortStatus(p.id);
-
     if (
       activeFilter !== 'all' &&
       !(
         p.type === activeFilter ||
-        (activeFilter === 'off' && linkedStatus === 'off') ||
-        (activeFilter === 'active' && linkedStatus === 'active')
+        (activeFilter === 'off' && isOffPoint(p)) ||
+        (activeFilter === 'active' && effectiveStatus(p) === 'active')
       )
     ) return;
     const m = L.marker([p.lat, p.lng], { icon: makeIcon(p), draggable: false });
@@ -1146,7 +1144,14 @@ function refreshMarker(id) {
   const p = getPoint(id);
   if (!p) return;
   if (markers[id]) map.removeLayer(markers[id]);
-  if (activeFilter !== 'all' && p.type !== activeFilter) return;
+  if (
+    activeFilter !== 'all' &&
+    !(
+      p.type === activeFilter ||
+      (activeFilter === 'off' && isOffPoint(p)) ||
+      (activeFilter === 'active' && effectiveStatus(p) === 'active')
+    )
+  ) return;
   const m = L.marker([p.lat, p.lng], { icon: makeIcon(p), draggable: false });
   m.on('click', () => openSidebar(p.id));
   m.addTo(map);
@@ -1565,8 +1570,8 @@ function renderStats() {
   const splitters  = points.filter(p=>p.type==='splitter');
   const muffs      = points.filter(p=>p.type==='muff');
   const totalFree  = splitters.reduce((a,p)=>a+freePorts(p),0);
-  const offList    = points.filter(p=>p.type==='off');
-  const activeList = points.filter(p=>p.type==='active');
+  const offList    = points.filter(p => isOffPoint(p));
+  const activeList = points.filter(p => effectiveStatus(p) === 'active');
 
   const chips = [
     { label:'Все',    val: points.length,    dot:'#7d8590', filter:'all'      },
@@ -1591,6 +1596,7 @@ function renderStats() {
 const LIST_META = {
   all:      { title:'Все точки',          dot:'#7d8590' },
   splitter: { title:'Сплиттеры',          dot:'#388bfd' },
+  muff:     { title:'Муфты',              dot:'#8b7355' },
   free:     { title:'Свободные порты',    dot:'#3fb950' },
   off:      { title:'Отключённые',        dot:'#e09b3d' },
   active:   { title:'Активные абоненты',  dot:'#3fb950' },
