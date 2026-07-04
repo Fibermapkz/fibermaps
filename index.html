@@ -1015,6 +1015,21 @@ function getLinkedPortStatus(pointId) {
   return null;
 }
 
+function effectiveStatus(p) {
+  const linkedStatus = getLinkedPortStatus(p.id);
+
+  if (linkedStatus === 'off_free') return 'off_free';
+  if (linkedStatus === 'off') return 'off';
+  if (linkedStatus === 'active') return 'active';
+
+  return p.type;
+}
+
+function isOffPoint(p) {
+  const s = effectiveStatus(p);
+  return s === 'off' || s === 'off_free';
+}
+  
 function makeIcon(point) {
   if (point.type === 'muff') {
     const cfg = typeConfig('muff');
@@ -1585,9 +1600,19 @@ function getFilteredList(filter) {
   if (filter === 'all')      return [...points];
   if (filter === 'splitter') return points.filter(p=>p.type==='splitter');
   if (filter === 'muff')     return points.filter(p=>p.type==='muff');
-  if (filter === 'off')      return points.filter(p=>p.type==='off');
-  if (filter === 'active')   return points.filter(p=>p.type==='active');
-  if (filter === 'free')     return points.filter(p=>p.type==='splitter' && freePorts(p)>0);
+
+  if (filter === 'off') {
+    return points.filter(p => isOffPoint(p));
+  }
+
+  if (filter === 'active') {
+    return points.filter(p => effectiveStatus(p) === 'active');
+  }
+
+  if (filter === 'free') {
+    return points.filter(p=>p.type==='splitter' && freePorts(p)>0);
+  }
+
   return [...points];
 }
 
